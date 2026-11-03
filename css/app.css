@@ -312,7 +312,6 @@ body.sheet-open .backdrop { opacity: 1; }
 .pill.ok { background: var(--accent-soft); color: var(--accent-strong); }
 .pill.kcal { color: var(--c-kcal); }
 .pill.prot { color: var(--c-prot); }
-.pill.tag { background: transparent; border: 1px solid var(--line); font-weight: 520; }
 
 .off-box { margin-top: 14px; padding: 14px; border-radius: var(--r); border: 1.5px dashed var(--line); }
 .off-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: .92rem; margin-bottom: 10px; }
@@ -437,11 +436,22 @@ body.sheet-open .backdrop { opacity: 1; }
 
 /* ---------- Rezept-Editor ---------- */
 .ed-ings { display: flex; flex-direction: column; gap: 6px; }
-.ing-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 4px; }
-.ing-input {
+.ed-ings + p { margin-top: 12px; }
+.ing-row { display: grid; grid-template-columns: 3.9rem 4.1rem minmax(0, 1fr) auto; align-items: center; gap: 0 5px; }
+.ing-amt, .ing-unit, .ing-input {
   width: 100%; min-width: 0; padding: 11px 12px; border-radius: 12px;
-  border: 1.5px solid var(--line); background: var(--surface); font-size: 1rem;
+  border: 1.5px solid var(--line); background-color: var(--surface); font-size: 1rem;
 }
+.ing-amt { padding-inline: 4px; text-align: center; }
+.ing-amt::placeholder { font-size: .8rem; }
+.ing-unit {
+  appearance: none; -webkit-appearance: none; padding: 11px 18px 11px 9px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238f9993' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 7px center; background-size: 9px;
+}
+/* ohne Menge ist die Einheit egal → blass */
+.ing-row:has(.ing-amt:placeholder-shown) .ing-unit { color: var(--muted); }
+.ing-amt:focus, .ing-unit:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .ing-prev { grid-column: 1 / -1; }
 .ing-prev:empty { display: none; }
 .prev {

@@ -449,7 +449,7 @@ function renderRecipes() {
   view.innerHTML = `
   <header class="top">
     <div class="top-row"><h1>Rezepte</h1><span class="count">${state.recipes.length || ''}</span></div>
-    ${state.recipes.length ? `<div class="search">${ui('search')}<input id="recipe-search" type="search" placeholder="Rezept, Zutat oder Tag suchen" autocomplete="off" aria-label="Rezepte durchsuchen"></div>` : ''}
+    ${state.recipes.length ? `<div class="search">${ui('search')}<input id="recipe-search" type="search" placeholder="Rezept oder Zutat suchen" autocomplete="off" aria-label="Rezepte durchsuchen"></div>` : ''}
   </header>
   <div id="recipe-list" class="pad">${recipeListHtml('')}</div>
   ${state.recipes.length ? `<a class="fab" href="#/rezept/neu">${ui('plus')}<span>Neues Rezept</span></a>` : ''}`;
@@ -463,7 +463,7 @@ function recipeListHtml(q) {
   }
   const k = I.compact(q);
   const list = state.recipes
-    .filter(r => !k || I.compact([r.title, ...(r.tags || []), ...r.ings.map(i => i.t)].join(' ')).includes(k))
+    .filter(r => !k || I.compact([r.title, ...r.ings.map(i => i.t)].join(' ')).includes(k))
     .sort((a, b) => a.title.localeCompare(b.title, 'de'));
   if (!list.length) return `<p class="muted center">Kein Rezept gefunden.</p>`;
   return list.map(r => {
@@ -471,13 +471,14 @@ function recipeListHtml(q) {
     return `<a class="card recipe-card" href="#/rezept/${r.id}">
       <div class="rc-title">${esc(r.title)}</div>
       <div class="rc-meta">${r.servings} ${+r.servings === 1 ? 'Portion' : 'Portionen'} · ${c.count} Zutaten${c.issues ? ` · <span class="warn-text">${c.issues} ohne Werte</span>` : ''}</div>
-      <div class="pills"><span class="pill kcal">${fmtInt(c.per[0])} kcal</span><span class="pill prot">${fmtG(c.per[1])} g Eiweiß</span>
-        ${(r.tags || []).map(t => `<span class="pill tag">${esc(t)}</span>`).join('')}</div>
+      <div class="pills"><span class="pill kcal">${fmtInt(c.per[0])} kcal</span><span class="pill prot">${fmtG(c.per[1])} g Eiweiß</span></div>
     </a>`;
   }).join('');
 }
 
 const ISSUE_TEXT = { nofood: 'nicht erkannt – tippen zum Zuordnen', noamount: 'Menge fehlt', nonutr: 'keine Nährwerte – tippen zum Eintragen' };
+// „Menge fehlt“ oder – wenn eine Stückzahl dasteht, die sich nicht in Gramm umrechnen lässt – Hinweis auf g/ml
+const issueText = a => (a.status === 'noamount' && a.p.qty != null ? 'Stückzahl lässt sich nicht umrechnen – g oder ml wählen' : ISSUE_TEXT[a.status]);
 
 function nutriCardHtml(c, servings) {
   const [k, p, carb, fat, fib] = c.per;
@@ -491,7 +492,7 @@ function nutriCardHtml(c, servings) {
     <div class="macros">${macro(p, 'Eiweiß', 'm-p', p * 4)}${macro(carb, 'Kohlenhydr.', 'm-c', carb * 4)}${macro(fat, 'Fett', 'm-f', fat * 9)}${macro(fib, 'Ballastst.', 'm-b', null)}</div>
     <p class="muted small">Gesamt ${fmtInt(c.total[0])} kcal · ${fmtG(c.total[1])} g Eiweiß${servings > 1 ? ` · für ${servings} Portionen` : ''}</p>
     ${issues.length ? `<div class="issues"><p>${ui('alert')} <b>${issues.length === 1 ? '1 Zutat wird' : issues.length + ' Zutaten werden'} nicht mitgerechnet:</b></p>
-      <ul>${issues.map(({ a, i }) => `<li><button type="button" class="link" data-act="relink" data-i="${i}">${esc(a.food?.n || a.p.name || '?')}</button> <span class="muted">– ${ISSUE_TEXT[a.status]}</span></li>`).join('')}</ul></div>` : ''}
+      <ul>${issues.map(({ a, i }) => `<li><button type="button" class="link" data-act="relink" data-i="${i}">${esc(a.food?.n || a.p.name || '?')}</button> <span class="muted">– ${issueText(a)}</span></li>`).join('')}</ul></div>` : ''}
   </section>`;
 }
 
@@ -525,7 +526,6 @@ function drawRecipe() {
   const steps = splitSteps(r.steps);
   el.innerHTML = `
     <h1 class="recipe-title">${esc(r.title)}</h1>
-    ${r.tags?.length ? `<div class="pills">${r.tags.map(t => `<span class="pill tag">${esc(t)}</span>`).join('')}</div>` : ''}
     <div class="servings"><span>Portionen</span>
       <div class="stepper">
         <button type="button" class="icon-btn" data-act="serv" data-d="-1" aria-label="Weniger Portionen"${D.servings <= 1 ? ' disabled' : ''}>${ui('minus')}</button>
@@ -569,6 +569,12 @@ function updateCta() {
 
 // ---------- Rezept bearbeiten ----------
 let E = null; // { id, key, draft, dirty }
+// Editor-Zeile: t = Zeile für Parser & Anzeige, a/u/n = Menge, Einheit (stk|g|ml), Zutat
+const blankIng = () => ({ t: '', a: '', u: 'stk', n: '' });
+const editIng = g => (g.n != null ? { a: '', u: 'stk', ...g } : { ...g, ...I.splitIng(g.t) });
+function ensureBlankRow(ings) {
+  if (!ings.length || ings[ings.length - 1].t.trim()) ings.push(blankIng());
+}
 
 function renderEditor(id) {
   const r = id ? state.recipes.find(x => x.id === id) : null;
@@ -577,8 +583,9 @@ function renderEditor(id) {
   const restored = state.draft?.key === key;
   const draft = restored
     ? state.draft.data
-    : structuredClone(r || { title: '', servings: 2, tags: [], ings: [], steps: '', notes: '' });
-  if (!draft.ings.length || draft.ings[draft.ings.length - 1].t.trim()) draft.ings.push({ t: '' });
+    : structuredClone(r || { title: '', servings: 2, ings: [], steps: '', notes: '' });
+  draft.ings = draft.ings.map(editIng);
+  ensureBlankRow(draft.ings);
   E = { id, key, draft, dirty: restored };
   view.innerHTML = `
   <header class="top bar">
@@ -588,13 +595,10 @@ function renderEditor(id) {
   </header>
   <form class="pad editor" id="editor" autocomplete="off">
     <label class="field"><span>Titel</span><input data-ed="title" value="${esc(draft.title)}" placeholder="z. B. Thai-Curry mit Huhn"></label>
-    <div class="row gap">
-      <label class="field serv-field"><span>Portionen</span><input data-ed="servings" type="number" inputmode="numeric" min="1" max="99" value="${esc(draft.servings)}"></label>
-      <label class="field grow"><span>Tags</span><input data-ed="tags" value="${esc((draft.tags || []).join(', '))}" placeholder="schnell, Ofen, vegetarisch"></label>
-    </div>
-    <div class="section-head"><h2>Zutaten</h2><span class="muted small">eine pro Zeile</span></div>
+    <label class="field serv-field"><span>Portionen</span><input data-ed="servings" type="number" inputmode="numeric" min="1" max="99" value="${esc(draft.servings)}"></label>
+    <div class="section-head"><h2>Zutaten</h2><span class="muted small">Menge · Einheit · Zutat</span></div>
     <div id="ed-ings" class="ed-ings">${draft.ings.map(ingRowHtml).join('')}</div>
-    <p class="muted small">Schreib wie gewohnt, z. B. „2 Zwiebeln“, „1 Dose Kokosmilch“ oder „200 g Hähnchenbrust“. Du kannst auch eine ganze Zutatenliste auf einmal einfügen. Zwischenüberschriften enden mit „:“.</p>
+    <p class="muted small">Menge als Stück, g oder ml – oder leer lassen, z. B. bei Salz. Du kannst auch eine ganze Zutatenliste ins Zutatenfeld einfügen, die Mengen werden dabei übernommen. Zwischenüberschriften enden mit „:“.</p>
     <div id="ed-nutri"></div>
     <label class="field"><span>Zubereitung</span><textarea data-ed="steps" rows="8" placeholder="Ein Schritt pro Zeile">${esc(draft.steps)}</textarea></label>
     <label class="field"><span>Notizen</span><textarea data-ed="notes" rows="3" placeholder="Tipps, Varianten …">${esc(draft.notes)}</textarea></label>
@@ -604,9 +608,12 @@ function renderEditor(id) {
   else if (!id) $('[data-ed="title"]').focus();
 }
 
+const UNIT_OPTS = [['stk', 'Stk'], ['g', 'g'], ['ml', 'ml']];
 function ingRowHtml(g, i) {
   return `<div class="ing-row" data-i="${i}">
-    <input class="ing-input" data-ing="${i}" value="${esc(g.t)}" placeholder="${i === 0 ? 'z. B. 200 g Hähnchenbrust' : 'Weitere Zutat'}" enterkeyhint="next" autocomplete="off" aria-label="Zutat ${i + 1}">
+    <input class="ing-amt" data-ing-a="${i}" value="${esc(g.a)}" placeholder="Menge" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Menge Zutat ${i + 1}">
+    <select class="ing-unit" data-ing-u="${i}" aria-label="Einheit Zutat ${i + 1}">${UNIT_OPTS.map(([v, l]) => `<option value="${v}"${g.u === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+    <input class="ing-input" data-ing="${i}" value="${esc(g.n)}" placeholder="${i === 0 ? 'z. B. Hähnchenbrust' : 'Weitere Zutat'}" enterkeyhint="next" autocomplete="off" aria-label="Zutat ${i + 1}">
     <button type="button" class="icon-btn small" data-act="ing-del" data-i="${i}" aria-label="Zutat ${i + 1} entfernen" tabindex="-1">${ui('x')}</button>
     <div class="ing-prev" id="prev-${i}">${ingPreviewHtml(g, i)}</div>
   </div>`;
@@ -618,9 +625,14 @@ function ingPreviewHtml(g, i) {
   const btn = (cls, inner) => `<button type="button" class="prev ${cls}" data-act="relink" data-i="${i}">${inner}</button>`;
   switch (a.status) {
     case 'header': return `<span class="prev muted">Zwischenüberschrift</span>`;
-    case 'ok': return btn(a.guess ? 'guess' : '', `${icon(a.food, 'ico xs')}<span>${esc(a.food.n)} · ${fmtInt(a.grams)} g · <b>${fmtInt(a.nutr[0])} kcal</b> · ${fmtG(a.nutr[1])} g Eiweiß${a.guess ? ' · <em>stimmt das?</em>' : ''}</span>`);
+    case 'ok': {
+      // „200“ + Stk ist fast immer vergessenes „g“
+      const many = g.u === 'stk' && g.a?.trim() && !a.p.unit && a.p.qty >= 50;
+      const note = many ? ' · <em>wirklich Stück? Sonst g oder ml wählen</em>' : a.guess ? ' · <em>stimmt das?</em>' : '';
+      return btn(a.guess || many ? 'guess' : '', `${icon(a.food, 'ico xs')}<span>${esc(a.food.n)} · ${fmtInt(a.grams)} g · <b>${fmtInt(a.nutr[0])} kcal</b> · ${fmtG(a.nutr[1])} g Eiweiß${note}</span>`);
+    }
     case 'zero': return btn('', `${icon(a.food, 'ico xs')}<span>${esc(a.food.n)} · zählt nicht</span>`);
-    case 'noamount': return btn('warn', `${icon(a.food, 'ico xs')}<span>${esc(a.food.n)} · Menge fehlt, z. B. „2“ oder „100 g“</span>`);
+    case 'noamount': return btn('warn', `${icon(a.food, 'ico xs')}<span>${esc(a.food.n)} · ${issueText(a)}</span>`);
     case 'nonutr': return btn('warn', `${icon(a.food, 'ico xs')}<span>${esc(a.food.n)} · keine Nährwerte – tippen</span>`);
     case 'ignored': return btn('', `<span>wird nicht mitgerechnet</span>`);
     default: return btn('warn', `${ui('alert')}<span>Nicht erkannt – tippen zum Zuordnen</span>`);
@@ -636,9 +648,8 @@ function drawEditorNutri() {
 function redrawIngs() {
   const box = $('#ed-ings');
   if (!box) return;
-  const ings = E.draft.ings;
-  if (!ings.length || ings[ings.length - 1].t.trim()) ings.push({ t: '' });
-  box.innerHTML = ings.map(ingRowHtml).join('');
+  ensureBlankRow(E.draft.ings);
+  box.innerHTML = E.draft.ings.map(ingRowHtml).join('');
   drawEditorNutri();
 }
 function persistDraft() {
@@ -646,34 +657,52 @@ function persistDraft() {
   state.draft = { key: E.key, data: E.draft };
   save();
 }
-function onIngInput(input) {
-  const i = +input.dataset.ing, g = E?.draft.ings[i];
+const ingRowIndex = el => +el.closest('.ing-row').dataset.i;
+/** Eine der drei Eingaben einer Zutatenzeile hat sich geändert. */
+function onIngInput(el) {
+  const i = ingRowIndex(el), g = E?.draft.ings[i];
   if (!g) return;
-  g.t = input.value;
+  const row = el.closest('.ing-row');
+  g.a = row.querySelector('.ing-amt').value;
+  g.u = row.querySelector('.ing-unit').value;
+  g.n = row.querySelector('.ing-input').value;
+  g.t = I.joinIng(g);
   if (g.l && I.compact(I.parseLine(g.t).name) !== g.ln) { delete g.l; delete g.f; delete g.ln; }
   $('#prev-' + i).innerHTML = ingPreviewHtml(g, i);
   if (i === E.draft.ings.length - 1 && g.t.trim()) {
-    E.draft.ings.push({ t: '' });
-    $('#ed-ings').insertAdjacentHTML('beforeend', ingRowHtml({ t: '' }, i + 1));
+    E.draft.ings.push(blankIng());
+    $('#ed-ings').insertAdjacentHTML('beforeend', ingRowHtml(blankIng(), i + 1));
   }
   drawEditorNutri();
   persistDraft();
 }
+/** „200 g Hack“ ins Zutatenfeld getippt (Menge leer) → beim Verlassen auf die drei Felder verteilen. */
+function onIngNameDone(input) {
+  const i = ingRowIndex(input), g = E?.draft.ings[i];
+  if (!g || g.a.trim()) return;
+  const s = I.splitIng(g.n);
+  if (!s.a) return;
+  const row = input.closest('.ing-row');
+  row.querySelector('.ing-amt').value = s.a;
+  row.querySelector('.ing-unit').value = s.u;
+  input.value = s.n;
+  onIngInput(input);
+}
 function onIngEnter(input) {
-  const i = +input.dataset.ing;
-  let next = $(`[data-ing="${i + 1}"]`);
+  const i = ingRowIndex(input);
+  if (input.matches('.ing-amt')) { $(`[data-ing="${i}"]`).focus(); return; }
+  let next = $(`[data-ing-a="${i + 1}"]`);
   if (!next) {
-    if (!input.value.trim()) return;
-    E.draft.ings.push({ t: '' });
-    $('#ed-ings').insertAdjacentHTML('beforeend', ingRowHtml({ t: '' }, i + 1));
-    next = $(`[data-ing="${i + 1}"]`);
+    if (!E.draft.ings[i]?.t.trim()) return;
+    E.draft.ings.push(blankIng());
+    $('#ed-ings').insertAdjacentHTML('beforeend', ingRowHtml(blankIng(), i + 1));
+    next = $(`[data-ing-a="${i + 1}"]`);
   }
   next.focus();
 }
 function onEdField(t) {
   const k = t.dataset.ed;
-  if (k === 'tags') E.draft.tags = t.value.split(',').map(s => s.trim()).filter(Boolean);
-  else E.draft[k] = t.value;
+  E.draft[k] = t.value;
   if (k === 'servings') drawEditorNutri();
   persistDraft();
 }
@@ -684,13 +713,16 @@ document.addEventListener('paste', e => {
   if (!/\n/.test(text.trim())) return;
   e.preventDefault();
   const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const i = +t.dataset.ing;
+  const i = ingRowIndex(t), g = E.draft.ings[i];
   lines[0] = t.value.slice(0, t.selectionStart) + lines[0];
   lines[lines.length - 1] += t.value.slice(t.selectionEnd);
-  E.draft.ings.splice(i, 1, ...lines.map(x => ({ t: x })));
+  const rows = lines.map(x => ({ t: x, ...I.splitIng(x) }));
+  if (g.a.trim()) rows[0] = { a: g.a, u: g.u, n: lines[0] }; // schon eingetragene Menge behalten
+  rows.forEach(r => { r.t = I.joinIng(r); });
+  E.draft.ings.splice(i, 1, ...rows);
   redrawIngs();
   persistDraft();
-  $(`[data-ing="${Math.min(i + lines.length, E.draft.ings.length - 1)}"]`)?.focus();
+  $(`[data-ing-a="${Math.min(i + lines.length, E.draft.ings.length - 1)}"]`)?.focus();
 });
 
 let navCount = 0;
@@ -893,7 +925,7 @@ const A = {
     }
     if (!inEditor && a.status === 'noamount') {
       location.hash = `#/rezept/${D.id}/bearbeiten`;
-      toast('Trag bei der Zutat eine Menge ein, z. B. „200 g“ oder „2“.');
+      toast('Trag bei der Zutat links eine Menge ein – in g, ml oder als Stückzahl.');
       return;
     }
     openFoodPicker(a.p.name || g.t, foodId => {
@@ -958,8 +990,10 @@ const A = {
       id: E.id || uid(),
       title,
       servings: Math.max(1, Math.min(99, parseInt(d.servings, 10) || 1)),
-      tags: (d.tags || []).filter(Boolean),
-      ings: d.ings.filter(g => g.t.trim()).map(g => ({ t: g.t.trim(), ...(g.l ? { l: true, ln: g.ln, ...(g.f ? { f: g.f } : {}) } : {}) })),
+      ings: d.ings.filter(g => g.t.trim()).map(g => ({
+        t: g.t.trim(), a: g.a.trim(), u: g.u, n: g.n.trim(),
+        ...(g.l ? { l: true, ln: g.ln, ...(g.f ? { f: g.f } : {}) } : {}),
+      })),
       steps: (d.steps || '').trim(),
       notes: (d.notes || '').trim(),
       created: old?.created || Date.now(),
@@ -1085,7 +1119,7 @@ document.addEventListener('input', e => {
   if (t.id === 'add-input') onAddInput(t.value);
   else if (t.id === 'recipe-search') $('#recipe-list').innerHTML = recipeListHtml(t.value);
   else if (t.id === 'spec-input') { const it = state.list.find(i => i.id === t.dataset.item); if (it) { it.s = t.value; save(); } }
-  else if (t.dataset.ing != null) onIngInput(t);
+  else if (t.dataset.ing != null || t.dataset.ingA != null || t.dataset.ingU != null) onIngInput(t);
   else if (t.dataset.ed) onEdField(t);
   else if (t.id === 'fp-q') drawPicker(t.value);
 });
@@ -1094,6 +1128,7 @@ document.addEventListener('change', e => {
   if (t.dataset.change === 'cat') setFoodCat(t.dataset.food, t.value);
   else if (t.dataset.change === 'sel') { if (t.checked) D.sel.add(+t.dataset.i); else D.sel.delete(+t.dataset.i); updateCta(); }
   else if (t.id === 'import-file') onImportFile(t);
+  else if (t.dataset.ing != null) onIngNameDone(t);
 });
 document.addEventListener('keydown', e => {
   const t = e.target;
@@ -1106,7 +1141,11 @@ document.addEventListener('keydown', e => {
     if (h.custom) { const id = ensureCustomFood(h.name); if (id) addFood(id, h.spec); }
     else addFood(h.food.id, h.spec, { name: h.label });
     afterAdd(true);
-  } else if (t.dataset?.ing != null) { e.preventDefault(); onIngEnter(t); }
+  } else if (t.dataset?.ing != null || t.dataset?.ingA != null) {
+    e.preventDefault();
+    if (t.dataset.ing != null) onIngNameDone(t);
+    onIngEnter(t);
+  }
   else if (t.id === 'off-q') { e.preventDefault(); $('[data-act="off-search"]')?.click(); }
   else if (t.id === 'fp-q') { e.preventDefault(); $('#fp-results .pick')?.click(); }
   else if (t.id === 'spec-input') { e.preventDefault(); closeSheet(); }

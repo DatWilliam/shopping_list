@@ -11,7 +11,7 @@ const fresh = () => ({
   customFoods: {},   // eigene Lebensmittel: id → { id, n, c, i, v, p?, src?, custom: true }
   catOverride: {},   // geänderte Kategorie eines Katalog-Lebensmittels
   catOrder: [...DEFAULT_ORDER],
-  recipes: [],       // { id, title, servings, tags, ings: [{ t, f?, l?, ln? }], steps, notes, created, updated }
+  recipes: [],       // { id, title, servings, ings: [{ t, a?, u?, n?, f?, l?, ln? }], steps, notes, created, updated }
   draft: null,       // ungespeicherter Rezept-Entwurf { key, data }
   hintDone: false,
 });
@@ -27,7 +27,7 @@ function normalize(s) {
   out.list = out.list.filter(i => i && i.id && i.f);
   out.recipes = out.recipes
     .filter(r => r && r.id && typeof r.title === 'string')
-    .map(r => ({ servings: 1, tags: [], steps: '', notes: '', ...r, ings: Array.isArray(r.ings) ? r.ings.filter(g => g && typeof g.t === 'string') : [] }));
+    .map(r => ({ servings: 1, steps: '', notes: '', ...r, ings: Array.isArray(r.ings) ? r.ings.filter(g => g && typeof g.t === 'string') : [] }));
   return out;
 }
 

@@ -175,6 +175,48 @@ export function parseLine(raw) {
   return { qty, qty2, unit, factor, name, span };
 }
 
+// ---------- Editor: Menge | Einheit | Zutat ----------
+const EDIT_UNITS = { g: ['g', 1], kg: ['g', 1000], ml: ['ml', 1], cl: ['ml', 10], dl: ['ml', 100], l: ['ml', 1000] };
+const numText = n => String(Math.round(n * 100) / 100).replace('.', ',');
+
+/**
+ * Zerlegt eine Zeile für die Eingabefelder des Editors: { a: Menge, u: 'stk'|'g'|'ml', n: Zutat }.
+ * „200 g Hack“ → 200 | g | Hack, „1 kg Mehl“ → 1000 | g | Mehl, „2 große Zwiebeln“ → 2 | stk | große Zwiebeln.
+ * Andere Einheiten („2 EL Öl“) bleiben komplett im Namen stehen – der Parser versteht sie trotzdem.
+ */
+export function splitIng(text) {
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+  const whole = { a: '', u: 'stk', n: t };
+  const p = parseLine(t);
+  if (p.empty || p.header) return whole;
+  const s = t.replace(/^[-*•·]\s+/, '');
+  const lead = amountAt(s);
+  if (!lead || s.slice(0, lead.span[0]).trim()) return whole; // „ca. 200 g“ bleibt, wie es ist
+  const raw = s.slice(lead.span[0], lead.span[1]);
+  const amount = /^[A-Za-zÄÖÜäöüß]/.test(raw) ? fmtQty(lead.qty) : raw; // „eine“ → 1
+  const tu = takeUnit(lead.rest);
+  if (!tu.unit) return lead.rest.trim() ? { a: amount, u: 'stk', n: lead.rest.trim() } : whole;
+  const name = tu.rest.trim();
+  if (!name || tu.factor !== 1) return whole;
+  if (tu.unit === 'stk') return { a: amount, u: 'stk', n: name };
+  const conv = EDIT_UNITS[tu.unit];
+  if (!conv) return whole;
+  const [u, mul] = conv;
+  const a = mul === 1 ? amount : numText(lead.qty * mul) + (lead.qty2 != null ? '-' + numText(lead.qty2 * mul) : '');
+  return { a, u, n: name };
+}
+
+/** Gegenstück zu splitIng: Felder → Zeile, die parseLine versteht. */
+export function joinIng(g) {
+  const a = String(g?.a ?? '').trim();
+  const n = String(g?.n ?? '').trim();
+  if (!a) return n;
+  return [a, g.u === 'g' || g.u === 'ml' ? g.u : '', n].filter(Boolean).join(' ');
+}
+
+// Packung bewusst nicht: „2 Gouda“ sind nicht zwangsläufig zwei Packungen
+const PACKS = ['becher', 'dose', 'glas', 'flasche', 'tube', 'tafel', 'bund', 'kopf', 'knolle', 'kugel', 'rolle', 'topf'];
+
 /** Gramm für eine geparste Zeile und ein Lebensmittel (oder null, wenn unbekannt). */
 export function toGrams(p, food) {
   if (!p || p.qty == null || !food) return null;
@@ -182,7 +224,12 @@ export function toGrams(p, food) {
   const u = p.unit ? UNITS[p.unit] : null;
   const fu = food.u || {};
   if (p.unit && fu[p.unit] != null) return q * fu[p.unit];
-  if (!u || u.piece) return food.p ? q * food.p : null;
+  if (!u || u.piece) {
+    if (food.p) return q * food.p;
+    // „1 Saure Sahne“ = 1 Becher, „1 Kokosmilch“ = 1 Dose
+    const pack = (!u || p.unit === 'stk') && PACKS.find(k => fu[k] != null);
+    return pack ? q * fu[pack] : null;
+  }
   if (u.g != null) return q * u.g;
   if (u.ml != null) return q * u.ml * (fu.ml != null ? fu.ml : (food.d || 1));
   return null;

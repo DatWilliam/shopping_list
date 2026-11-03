@@ -13,7 +13,7 @@ Läuft offline, die Daten bleiben auf dem Gerät.
 - Reihenfolge der Bereiche unter **Mehr** an deinen Markt anpassen
 
 **Rezepte**
-- Zutaten schreibst du wie gewohnt, eine pro Zeile („1 Dose Kokosmilch“, „Hühnerbrust (~200g)“) – oder fügst die ganze Liste auf einmal ein
+- Pro Zutat links die Menge als Stück, g oder ml – oder leer lassen (z. B. Salz). Eine ganze Zutatenliste kannst du auch auf einmal einfügen, die Mengen werden dann übernommen
 - kcal, Eiweiß, Kohlenhydrate, Fett und Ballaststoffe werden schon beim Tippen ausgerechnet (pro Portion und gesamt)
 - Portionen umstellen rechnet Mengen und Nährwerte um
 - Zutaten anhaken → „auf die Einkaufsliste“ (Mengen werden zusammengerechnet)
@@ -57,6 +57,7 @@ Alles wird im Browser des jeweiligen Geräts gespeichert (localStorage). Handy u
 | Lebensmittel, Nährwerte, Tipps, Saison | `js/foods.js` (Format steht oben in der Datei) |
 | Einheiten (EL, Dose, Bund …) | `js/ingredients.js` → `UNITS` |
 | Farben & Aussehen | `css/app.css` (oben die Farbvariablen, hell und dunkel) |
+| Farbe der Android-Leiste unten (installierte App) | `manifest.webmanifest` → `theme_color` |
 | Neue Icons nach Änderungen an `foods.js` | `py tools/build_icons.py` |
 
 **Wichtig nach jeder Änderung:** in `sw.js` die Version hochzählen (`kuechenzettel-v1` → `-v2` …) und neu hochladen. Dann meldet die App auf dem Handy „Neue Version installiert“.
