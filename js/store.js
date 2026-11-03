@@ -12,8 +12,10 @@ const fresh = () => ({
   catOverride: {},   // geänderte Kategorie eines Katalog-Lebensmittels
   stores: [],        // Supermärkte: { id, name, order: Kategorie-IDs in Laufreihenfolge }
   storeId: null,     // ausgewählter Supermarkt
-  recipes: [],       // { id, title, ings: [{ t, a?, u?, n?, sp?: Gewürz, f?, l?, ln? }], steps, notes, created, updated }
+  recipes: [],       // { id, title, prepMin?, cookMin?, ings: [{ t, a?, u?, n?, sp?: Gewürz, f?, l?, ln? }], steps, notes, created, updated }
   draft: null,       // ungespeicherter Rezept-Entwurf { key, data }
+  cook: null,        // Kochmodus-Fortschritt { id: Rezept, steps: [erledigte Schritte], ings: [bereitgestellte Zutaten] }
+  timers: [],        // laufende Küchen-Timer { id, label, dur: Sekunden, end: Zeitstempel, rang?: abgelaufen }
   hintDone: false,
 });
 
@@ -33,6 +35,9 @@ function normalize(s) {
   out.stores = stores.map(x => ({ ...x, order: fixOrder(x.order) }));
   if (!out.stores.some(x => x.id === out.storeId)) out.storeId = out.stores[0].id;
   delete out.catOrder;
+  out.timers = Array.isArray(out.timers) ? out.timers.filter(t => t && t.id && Number.isFinite(t.end) && Number.isFinite(t.dur)) : [];
+  const ck = out.cook;
+  out.cook = ck && ck.id ? { id: ck.id, steps: Array.isArray(ck.steps) ? ck.steps : [], ings: Array.isArray(ck.ings) ? ck.ings : [] } : null;
   out.list = out.list.filter(i => i && i.id && i.f);
   out.recipes = out.recipes
     .filter(r => r && r.id && typeof r.title === 'string')
@@ -74,7 +79,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) flush
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 export function exportJSON() {
-  const { draft, ...data } = state;
+  const { draft, cook, timers, ...data } = state;
   return JSON.stringify({ app: 'kuechenzettel', version: 1, exportedAt: new Date().toISOString(), data }, null, 1);
 }
 

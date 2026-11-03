@@ -430,7 +430,7 @@ body.sheet-open .backdrop { opacity: 1; }
 .ed-ings { display: flex; flex-direction: column; gap: 6px; }
 .add-row { margin-top: 8px; }
 .ed-hint { margin-top: 14px; }
-.ing-row { display: grid; grid-template-columns: 3.9rem 4.1rem minmax(0, 1fr) auto; align-items: center; gap: 0 5px; }
+.ing-row { display: grid; grid-template-columns: minmax(0, 1fr) 3.9rem 4.1rem auto; align-items: center; gap: 0 5px; }
 .ing-amt, .ing-unit, .ing-input {
   width: 100%; min-width: 0; padding: 11px 12px; border-radius: 12px;
   border: 1.5px solid var(--line); background-color: var(--surface); font-size: 1rem;
@@ -497,3 +497,74 @@ body.sheet-open .backdrop { opacity: 1; }
 }
 .store-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .store-chip .ui { width: 16px; height: 16px; flex: none; }
+
+/* ---------- Arbeits- und Kochzeit ---------- */
+.time-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.time-fields .field { margin-bottom: 8px; }
+.field > .unit-input { position: relative; display: block; font-size: inherit; font-weight: inherit; color: inherit; }
+.unit-input input { padding-right: 46px; }
+.unit-input i { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-style: normal; color: var(--muted); pointer-events: none; }
+.field-hint { margin: 0 0 6px; }
+.times { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; color: var(--muted); }
+.times > .ui { width: 18px; height: 18px; margin-right: 2px; }
+.time-chip { padding: 4px 10px; border-radius: 999px; background: var(--surface-2); font-size: .84rem; color: var(--ink-2); }
+.time-chip b { color: var(--ink); font-weight: 680; }
+.cook-start { margin-top: 14px; }
+
+/* ---------- Kochmodus ---------- */
+body[data-view="cook"] .tabbar { display: none; }
+body[data-view="cook"] #view { padding-bottom: calc(var(--timers-h, 0px) + env(safe-area-inset-bottom, 0px) + 40px); }
+body[data-view="cook"] .toast { bottom: calc(var(--timers-h, 0px) + env(safe-area-inset-bottom, 0px) + 16px); }
+.wake { display: grid; place-items: center; width: 44px; height: 44px; flex: none; color: var(--muted); opacity: .35; transition: opacity .2s, color .2s; }
+.wake.on { color: var(--c-carb); opacity: 1; }
+.cook-title { font-size: 1.6rem; font-weight: 770; letter-spacing: -.015em; margin-top: 4px; }
+.cook .btn.block { margin-top: 14px; }
+.cook-ings { list-style: none; padding: 0; margin: 6px 0 0; }
+.cook-ing {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 4px; text-align: left;
+  border: 0; border-bottom: 1px solid var(--line); background: transparent; font-size: 1.08rem; line-height: 1.35;
+}
+.cook-ings li:last-child .cook-ing { border-bottom: 0; }
+.cook-ing .ck { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border-radius: 50%; border: 2px solid var(--muted); color: transparent; }
+.cook-ing .ck .ui { width: 16px; height: 16px; stroke-width: 3; }
+.cook-ing.done { color: var(--muted); }
+.cook-ing.done .ck { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.cook-steps { list-style: none; padding: 0; margin: 8px 0 10px; display: flex; flex-direction: column; gap: 10px; }
+.cook-step {
+  display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; padding: 14px 14px 14px 12px; cursor: pointer;
+  border-radius: 16px; background: var(--surface); border: 1.5px solid var(--line); font-size: 1.14rem; line-height: 1.55;
+  transition: opacity .2s, border-color .2s;
+}
+.cook-step .num {
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--surface-2); font-weight: 750; font-size: .95rem; color: var(--ink-2);
+}
+.cook-step .num .ui { width: 18px; height: 18px; stroke-width: 3; }
+.cook-step .txt { padding-top: 2px; overflow-wrap: anywhere; }
+.cook-step.current { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cook-step.current .num { background: var(--accent); color: var(--accent-ink); }
+.cook-step.done { opacity: .5; }
+.cook-step.done .num { background: var(--accent-soft); color: var(--accent-strong); }
+.tchip {
+  display: inline-flex; align-items: center; gap: 5px; margin: 0 2px; padding: 1px 10px 1px 7px; vertical-align: baseline;
+  border: 0; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong); font-weight: 680; font-size: .95em;
+}
+.tchip .ui { width: 16px; height: 16px; }
+.cook-done { margin-top: 26px; text-align: center; }
+.cook-done p { margin: 8px 0 14px; font-size: 1.1rem; }
+
+/* ---------- Timer-Leiste (nur im Kochmodus sichtbar) ---------- */
+.timers {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; max-width: 760px; margin: 0 auto;
+  display: none; flex-direction: column; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface); border-top: 1px solid var(--line); box-shadow: var(--shadow-up);
+}
+body[data-view="cook"] .timers:not(:empty) { display: flex; }
+.timer { display: flex; align-items: center; gap: 10px; padding: 4px 4px 4px 8px; border-radius: 12px; }
+.timer > .ui { color: var(--accent); }
+.tm-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .9rem; }
+.tm-left { font-size: 1.4rem; font-weight: 760; font-variant-numeric: tabular-nums; }
+.tm-plus { font-weight: 750; font-size: .92rem; }
+.timer.rang { background: var(--danger-soft); animation: ring-pulse 1s ease-in-out infinite; }
+.timer.rang > .ui, .timer.rang .tm-left { color: var(--danger); }
+@keyframes ring-pulse { 50% { background: transparent; } }

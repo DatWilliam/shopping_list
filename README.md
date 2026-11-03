@@ -13,10 +13,12 @@ Läuft offline, die Daten bleiben auf dem Gerät.
 - Mehrere Supermärkte mit eigener Reihenfolge der Bereiche (**Mehr → Supermärkte & Reihenfolge**), Wechsel direkt auf der Liste
 
 **Rezepte**
-- Pro Zutat links die Menge in Stück, Gramm oder Milliliter – oder leer lassen (z. B. Salz). Eine ganze Zutatenliste kannst du auch auf einmal einfügen, die Mengen werden dann übernommen
+- Pro Zutat erst der Name, dahinter die Menge in Stück, Gramm oder Milliliter – oder leer lassen (z. B. Salz). Eine ganze Zutatenliste kannst du auch auf einmal einfügen, die Mengen werden dann übernommen
 - Gewürze stehen getrennt von den Zutaten (beim Einfügen automatisch einsortiert)
 - kcal, Eiweiß, Kohlenhydrate, Fett und Ballaststoffe für das ganze Rezept werden schon beim Tippen ausgerechnet, dazu das Gesamtgewicht der Zutaten
 - Zutaten anhaken → „auf die Einkaufsliste“ (Mengen werden zusammengerechnet); „Alle auswählen“ lässt die Gewürze aus
+- Optional Arbeitszeit und Kochzeit pro Rezept
+- **Kochmodus**: Bildschirm bleibt an, große Schrift, Zutaten und Schritte abhaken. Zeiten in den Schritten („10 min“, „1 Std.“) und die Kochzeit lassen sich als Timer starten – sie piepen und vibrieren, solange die App offen ist, und laufen nach dem Schließen weiter
 - Unbekannte Zutaten (z. B. Markenprodukte) kannst du zuordnen oder neu anlegen – Nährwerte gibt es per Online-Suche aus Open Food Facts
 
 ## Am PC starten

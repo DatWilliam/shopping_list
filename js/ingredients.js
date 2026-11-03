@@ -191,7 +191,8 @@ export function splitIng(text) {
   if (p.empty || p.header) return whole;
   const s = t.replace(/^[-*•·]\s+/, '');
   const lead = amountAt(s);
-  if (!lead || s.slice(0, lead.span[0]).trim()) return whole; // „ca. 200 g“ bleibt, wie es ist
+  if (!lead) return splitTrailing(s) || whole;
+  if (s.slice(0, lead.span[0]).trim()) return whole; // „ca. 200 g“ bleibt, wie es ist
   const raw = s.slice(lead.span[0], lead.span[1]);
   const amount = /^[A-Za-zÄÖÜäöüß]/.test(raw) ? fmtQty(lead.qty) : raw; // „eine“ → 1
   const tu = takeUnit(lead.rest);
@@ -204,6 +205,24 @@ export function splitIng(text) {
   const [u, mul] = conv;
   const a = mul === 1 ? amount : numText(lead.qty * mul) + (lead.qty2 != null ? '-' + numText(lead.qty2 * mul) : '');
   return { a, u, n: name };
+}
+
+/** Menge am Ende: „Hack 500 g“, „Zwiebeln 2“, „Milch 1 l“. Klammern und fremde Wörter („Pizza 4 Jahreszeiten“) bleiben stehen. */
+function splitTrailing(s) {
+  if (/[()]/.test(s)) return null;
+  const m = s.match(TRAIL_RE);
+  if (!m || m[0].includes('~') || /ca\./i.test(m[0])) return null;
+  const n = s.slice(0, m.index).trim();
+  const qty = parseNum(m[1]), qty2 = m[2] ? parseNum(m[2]) : null;
+  if (!n || qty == null) return null;
+  const unit = m[3] ? UNIT_BY_ALIAS.get(fold(m[3].replace(/\.$/, ''))) : null;
+  const amount = m[2] ? `${m[1]}-${m[2]}` : m[1];
+  if (!m[3]) return qty < 100 ? { a: amount, u: 'stk', n } : null;
+  if (unit === 'stk') return { a: amount, u: 'stk', n };
+  const conv = unit && EDIT_UNITS[unit];
+  if (!conv) return null; // „Öl 2 EL“: so lassen, der Parser versteht es trotzdem
+  const [u, mul] = conv;
+  return { a: mul === 1 ? amount : numText(qty * mul) + (qty2 != null ? '-' + numText(qty2 * mul) : ''), u, n };
 }
 
 /** Gegenstück zu splitIng: Felder → Zeile, die parseLine versteht. */

@@ -4,7 +4,7 @@ import * as I from './ingredients.js';
 import { state, save, flush, uid, exportJSON, parseBackup, applyBackup, DEFAULT_ORDER, activeStore } from './store.js';
 import { searchOFF } from './off.js';
 
-const VERSION = '1.2';
+const VERSION = '1.4';
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const cap = s => { s = String(s || '').trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
@@ -33,6 +33,8 @@ const UI = {
   tag: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
   leaf: '<path d="M11 20A7 7 0 0 1 4 13c0-5 4-9 16-10-1 12-5 17-9 17z"/><path d="M4 21c4-4 7-7 11-11"/>',
   bulb: '<path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V16h8v-1.3A7 7 0 0 0 12 2z"/>',
+  timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2h5M12 2v3"/>',
+  pot: '<path d="M5 11h14v5a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4v-5z"/><path d="M3 11h18"/><path d="M9.5 7.5c0-1.5 1-1.5 1-3M13.5 7.5c0-1.5 1-1.5 1-3"/>',
   store: '<path d="M4 10v10h16V10"/><path d="M3 4h18l-1.2 5.2a2.4 2.4 0 0 1-4.6.3 2.6 2.6 0 0 1-5 0 2.4 2.4 0 0 1-4.6-.3L3 4z"/><path d="M10 20v-5h4v5"/>',
   next: '<path d="M9 6l6 6-6 6"/>',
 };
@@ -446,6 +448,17 @@ function computeRecipe(r) {
 }
 const fmtWeight = g => (g >= 1000 ? `${(Math.round(g / 100) / 10).toLocaleString('de-DE')} kg` : `${Math.round(g / 10) * 10 || Math.round(g)} g`);
 
+// ---------- Arbeits- und Kochzeit ----------
+const minutes = v => { const n = Math.round(+String(v ?? '').replace(',', '.')); return n > 0 ? Math.min(n, 2880) : 0; };
+const totalMin = r => minutes(r.prepMin) + minutes(r.cookMin);
+const fmtMin = m => (m >= 60 ? `${Math.floor(m / 60)} Std${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`);
+function timesHtml(r) {
+  const p = minutes(r.prepMin), k = minutes(r.cookMin);
+  if (!p && !k) return '';
+  const chip = (label, m) => `<span class="time-chip">${label} <b>${fmtMin(m)}</b></span>`;
+  return `<div class="times">${ui('timer')}${p ? chip('Arbeitszeit', p) : ''}${k ? chip('Kochzeit', k) : ''}${p && k ? chip('Gesamt', p + k) : ''}</div>`;
+}
+
 // Gewürze stehen im Rezept getrennt (hat man meistens da). sp = true/false; fehlt es (alte Rezepte), nach Kategorie raten.
 const autoSpice = g => { const f = I.analyze(g, ctx).food; return !!f && catOf(f) === 'gewuerze'; };
 const isSpice = g => g.sp ?? autoSpice(g);
@@ -475,7 +488,7 @@ function recipeListHtml(q) {
     const c = computeRecipe(r);
     return `<a class="card recipe-card" href="#/rezept/${r.id}">
       <div class="rc-title">${esc(r.title)}</div>
-      <div class="rc-meta">${c.count} Zutaten${c.grams ? ` · ≈ ${fmtWeight(c.grams)}` : ''}${c.issues ? ` · <span class="warn-text">${c.issues} ohne Werte</span>` : ''}</div>
+      <div class="rc-meta">${c.count} Zutaten${c.grams ? ` · ≈ ${fmtWeight(c.grams)}` : ''}${totalMin(r) ? ` · ${fmtMin(totalMin(r))}` : ''}${c.issues ? ` · <span class="warn-text">${c.issues} ohne Werte</span>` : ''}</div>
       <div class="pills"><span class="pill kcal">${fmtInt(c.total[0])} kcal</span><span class="pill prot">${fmtG(c.total[1])} g Eiweiß</span></div>
     </a>`;
   }).join('');
@@ -534,8 +547,11 @@ function drawRecipe() {
   const allSel = mainSel.length > 0 && mainSel.every(i => D.sel.has(i));
   const li = i => ingLiHtml(r, c.rows[i], i, on);
   const steps = splitSteps(r.steps);
+  const cooking = state.cook?.id === r.id && (state.cook.steps.length || state.cook.ings.length);
   el.innerHTML = `
     <h1 class="recipe-title">${esc(r.title)}</h1>
+    ${timesHtml(r)}
+    <a class="btn primary block cook-start" href="#/rezept/${r.id}/kochen">${ui('pot')} ${cooking ? 'Weiterkochen' : 'Kochmodus starten'}</a>
     ${nutriCardHtml(c)}
     <section class="block">
       <div class="section-head"><h2>Zutaten</h2>${mainSel.length ? `<button type="button" class="link" data-act="sel-all">${allSel ? 'Auswahl aufheben' : 'Alle auswählen'}</button>` : ''}</div>
@@ -572,6 +588,194 @@ function updateCta() {
   cta.firstElementChild.innerHTML = `${ui('bag')} ${n} ${n === 1 ? 'Zutat' : 'Zutaten'} auf die Einkaufsliste`;
 }
 
+// ---------- Kochmodus ----------
+// Zeiten in Schritten: „10 min“, „20–25 Minuten“, „1 Std.“, „30 Sek.“
+const TIME_RE = /(?:ca\.?\s*|~\s*)?(\d+(?:[.,]\d+)?|½)(?:\s*(?:-|–|bis)\s*(\d+(?:[.,]\d+)?))?\s*(Std\.?|Stunden?|h|Min\.?|Minuten?|Sek\.?|Sekunden?)(?![a-zäöüß])/gi;
+const timeUnit = u => (/^(std|stunde|h)/i.test(u) ? 3600 : /^sek/i.test(u) ? 1 : 60);
+const numDe = s => (s === '½' ? 0.5 : parseFloat(String(s).replace(',', '.')));
+const shorten = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
+
+function cookFor(id) {
+  if (state.cook?.id !== id) { state.cook = { id, steps: [], ings: [] }; save(); }
+  return state.cook;
+}
+
+function renderCook(id) {
+  const r = state.recipes.find(x => x.id === id);
+  if (!r) { location.replace('#/rezepte'); return; }
+  cookFor(id);
+  view.innerHTML = `
+  <header class="top bar">
+    <a class="icon-btn" href="#/rezept/${id}" data-act="back" aria-label="Kochmodus verlassen">${ui('x')}</a>
+    <h1 class="bar-title">Kochmodus</h1>
+    <span class="wake" id="wake" title="Der Bildschirm bleibt an">${ui('bulb')}</span>
+  </header>
+  <div class="pad cook" id="cook"></div>`;
+  drawCook();
+}
+
+/** Schritt-Text mit Timer-Knöpfen für jede Zeitangabe. */
+function stepHtml(text, n) {
+  let out = '', last = 0;
+  for (const m of text.matchAll(TIME_RE)) {
+    const sec = Math.round(numDe(m[1]) * timeUnit(m[3]));
+    if (!(sec > 0)) continue;
+    out += esc(text.slice(last, m.index));
+    out += `<button type="button" class="tchip" data-act="cook-timer" data-sec="${sec}" data-label="${esc(`${n}. ${shorten(text, 28)}`)}">${ui('timer')}${esc(m[0].trim())}</button>`;
+    last = m.index + m[0].length;
+  }
+  return out + esc(text.slice(last));
+}
+
+function drawCook() {
+  const ck = state.cook;
+  const r = ck && state.recipes.find(x => x.id === ck.id);
+  const el = $('#cook');
+  if (!r || !el) return;
+  const c = computeRecipe(r);
+  const steps = splitSteps(r.steps);
+  const current = steps.findIndex((s, i) => !ck.steps.includes(i));
+  const idx = r.ings.map((g, i) => i).filter(i => c.rows[i].status !== 'empty');
+  const ingLi = i => {
+    const a = c.rows[i];
+    if (a.status === 'header') return `<li class="ing-head">${esc(a.p.name)}</li>`;
+    const done = ck.ings.includes(i);
+    return `<li><button type="button" class="cook-ing${done ? ' done' : ''}" data-act="cook-ing" data-i="${i}" aria-pressed="${done}">
+      <span class="ck" aria-hidden="true">${ui('check')}</span>${icon(a.food || { n: a.p.name }, 'ico sm')}
+      <span>${esc(r.ings[i].t.replace(/^\s*[-*•·]\s+/, '').trim())}</span></button></li>`;
+  };
+  const main = idx.filter(i => !isSpice(r.ings[i])), spices = idx.filter(i => isSpice(r.ings[i]));
+  const k = minutes(r.cookMin);
+  el.innerHTML = `
+    <h1 class="cook-title">${esc(r.title)}</h1>
+    ${timesHtml(r)}
+    ${k ? `<button type="button" class="btn block" data-act="cook-timer" data-sec="${k * 60}" data-label="Kochzeit">${ui('timer')} Kochzeit-Timer starten · ${fmtMin(k)}</button>` : ''}
+    <section class="block">
+      <div class="section-head"><h2>Zutaten</h2><span class="muted small">antippen, was bereitsteht</span></div>
+      ${main.length ? `<ul class="cook-ings">${main.map(ingLi).join('')}</ul>` : ''}
+      ${spices.length ? `<h3 class="sub-head">Gewürze</h3><ul class="cook-ings">${spices.map(ingLi).join('')}</ul>` : ''}
+      ${idx.length ? '' : '<p class="muted">Keine Zutaten eingetragen.</p>'}
+    </section>
+    <section class="block">
+      <div class="section-head"><h2>Zubereitung</h2>${steps.length ? `<span class="muted small">${ck.steps.length} von ${steps.length}</span>` : ''}</div>
+      ${steps.length ? `<ol class="cook-steps">${steps.map((s, i) => `<li class="cook-step${ck.steps.includes(i) ? ' done' : ''}${i === current ? ' current' : ''}" data-act="cook-step" data-i="${i}" role="button" tabindex="0" aria-pressed="${ck.steps.includes(i)}">
+          <span class="num">${ck.steps.includes(i) ? ui('check') : i + 1}</span><div class="txt">${stepHtml(s, i + 1)}</div></li>`).join('')}</ol>
+          <p class="muted small">Schritt antippen = erledigt. Zeiten wie „10 min“ antippen startet einen Timer.</p>`
+        : `<p class="muted">Keine Schritte eingetragen – im Rezept unter „Bearbeiten“ ergänzen.</p>`}
+    </section>
+    ${steps.length && current === -1 ? `<div class="cook-done">${icon({ i: '🍳' }, 'ico big')}<p><b>Fertig – guten Appetit!</b></p>
+      <button type="button" class="btn primary" data-act="cook-finish">Kochmodus beenden</button></div>` : ''}
+    <div class="block center"><button type="button" class="btn ghost small" data-act="cook-reset">Von vorn beginnen</button></div>`;
+  $('#wake')?.classList.toggle('on', !!wakeLock);
+}
+
+// Bildschirm anlassen, solange der Kochmodus offen ist
+let wakeLock = null;
+async function lockScreen() {
+  if (wakeLock || !navigator.wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; $('#wake')?.classList.remove('on'); });
+    $('#wake')?.classList.add('on');
+  } catch { /* z. B. Energiesparmodus */ }
+}
+function unlockScreen() {
+  wakeLock?.release().catch(() => {});
+  wakeLock = null;
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && currentView === 'cook') lockScreen(); });
+
+// ---------- Küchen-Timer ----------
+// Laufen über Zeitstempel, überstehen also Neuladen. Klingeln (Ton + Vibration) nur, solange die App offen ist.
+let timerLoop = null, audioCtx = null, timersSig = '';
+const lastRing = new Map();
+const timersEl = document.createElement('div');
+timersEl.className = 'timers';
+timersEl.setAttribute('aria-live', 'polite');
+document.body.append(timersEl);
+
+function unlockAudio() {
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch { audioCtx = null; }
+}
+function ring() {
+  try { navigator.vibrate?.([300, 120, 300, 120, 600]); } catch {}
+  if (!audioCtx) return;
+  try {
+    const t0 = audioCtx.currentTime;
+    [0, 0.28, 0.56].forEach(d => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t0 + d);
+      g.gain.exponentialRampToValueAtTime(0.35, t0 + d + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.22);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t0 + d);
+      o.stop(t0 + d + 0.25);
+    });
+  } catch {}
+}
+const fmtClock = ms => {
+  const s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`;
+};
+
+function startTimer(sec, label) {
+  unlockAudio();
+  if (state.timers.some(t => t.label === label && t.dur === sec && !t.rang)) { toast('Dieser Timer läuft schon.'); return; }
+  state.timers.push({ id: uid(), label, dur: sec, end: Date.now() + sec * 1000 });
+  save();
+  ensureTimerLoop();
+  drawTimers();
+}
+function ensureTimerLoop() {
+  if (state.timers.length && !timerLoop) timerLoop = setInterval(tickTimers, 500);
+  if (!state.timers.length && timerLoop) { clearInterval(timerLoop); timerLoop = null; }
+  tickTimers();
+}
+function tickTimers() {
+  const now = Date.now();
+  for (const t of state.timers) {
+    if (!t.rang && now >= t.end) {
+      t.rang = true;
+      save();
+      if (currentView !== 'cook') toast(`⏰ ${esc(t.label)}: Zeit ist um!`, { html: true, action: 'Stopp', onAction: () => ackTimers(), ms: 60000 });
+    }
+    // eine Minute lang alle 4 Sekunden klingeln, bis jemand „OK“ tippt
+    if (t.rang && now - t.end < 60000 && now - (lastRing.get(t.id) || 0) > 4000) {
+      lastRing.set(t.id, now);
+      ring();
+    }
+  }
+  drawTimers();
+}
+function ackTimers(id) {
+  state.timers = state.timers.filter(t => (id ? t.id !== id : !t.rang));
+  save();
+  ensureTimerLoop();
+  drawTimers();
+}
+function drawTimers() {
+  const now = Date.now();
+  const sig = state.timers.map(t => t.id + (t.rang ? 'r' : '')).join();
+  if (sig !== timersSig) {
+    timersSig = sig;
+    timersEl.innerHTML = state.timers.map(t => `<div class="timer${t.rang ? ' rang' : ''}" data-t="${t.id}">
+      ${ui('timer')}<span class="tm-label">${esc(t.label)}</span><b class="tm-left"></b>
+      ${t.rang ? `<button type="button" class="btn primary small" data-act="timer-ok" data-t="${t.id}">OK</button>`
+        : `<button type="button" class="icon-btn small tm-plus" data-act="timer-add" data-t="${t.id}" aria-label="Eine Minute mehr">+1</button>
+           <button type="button" class="icon-btn small" data-act="timer-del" data-t="${t.id}" aria-label="Timer abbrechen">${ui('x')}</button>`}</div>`).join('');
+  }
+  for (const t of state.timers) {
+    const b = timersEl.querySelector(`[data-t="${t.id}"] .tm-left`);
+    if (b) b.textContent = t.rang ? 'Fertig!' : fmtClock(t.end - now);
+  }
+  document.body.style.setProperty('--timers-h', currentView === 'cook' && state.timers.length ? timersEl.offsetHeight + 'px' : '0px');
+}
+
 // ---------- Rezept bearbeiten ----------
 let E = null; // { id, key, draft, dirty }
 // Editor-Zeile: t = Zeile für Parser & Anzeige, a/u/n = Menge, Einheit (stk|g|ml), Zutat, sp = Gewürz
@@ -605,7 +809,12 @@ function renderEditor(id) {
   </header>
   <form class="pad editor" id="editor" autocomplete="off">
     <label class="field"><span>Titel</span><input data-ed="title" value="${esc(draft.title)}" placeholder="z. B. Thai-Curry mit Huhn"></label>
-    <div class="section-head"><h2>Zutaten</h2><span class="muted small">Menge · Einheit · Zutat</span></div>
+    <div class="time-fields">
+      <label class="field"><span>Arbeitszeit</span><span class="unit-input"><input data-ed="prepMin" type="number" inputmode="numeric" min="0" max="2880" value="${esc(draft.prepMin ?? '')}" placeholder="–"><i>min</i></span></label>
+      <label class="field"><span>Kochzeit</span><span class="unit-input"><input data-ed="cookMin" type="number" inputmode="numeric" min="0" max="2880" value="${esc(draft.cookMin ?? '')}" placeholder="–"><i>min</i></span></label>
+    </div>
+    <p class="muted small field-hint">Beides optional. Kochzeit ist, was danach von allein läuft – im Ofen, beim Köcheln oder Gehen.</p>
+    <div class="section-head"><h2>Zutaten</h2><span class="muted small">Zutat · Menge · Einheit</span></div>
     <div id="ed-main" class="ed-ings"></div>
     <button type="button" class="btn ghost small add-row" data-act="ing-add" data-sp="0">${ui('plus')} Zutat</button>
     <div class="section-head"><h2>Gewürze</h2><span class="muted small">hast du meistens da</span></div>
@@ -629,10 +838,10 @@ function ingRowHtml(g, i, first) {
   const what = g.sp ? 'Gewürz' : 'Zutat';
   const ph = first ? (g.sp ? 'z. B. Paprikapulver' : 'z. B. Hähnchenbrust') : (g.sp ? 'Weiteres Gewürz' : 'Weitere Zutat');
   return `<div class="ing-row" data-i="${i}">
+    <input class="ing-input" data-ing="${i}" value="${esc(g.n)}" placeholder="${ph}" enterkeyhint="next" autocomplete="off" aria-label="${what}">
     <input class="ing-amt" data-ing-a="${i}" value="${esc(g.a)}" placeholder="Menge" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Menge">
     <label class="ing-unit"><span class="ing-unit-txt">${unitShort(g.u)}</span>
       <select data-ing-u="${i}" aria-label="Einheit">${UNIT_OPTS.map(([v, , long]) => `<option value="${v}"${g.u === v ? ' selected' : ''}>${long}</option>`).join('')}</select></label>
-    <input class="ing-input" data-ing="${i}" value="${esc(g.n)}" placeholder="${ph}" enterkeyhint="next" autocomplete="off" aria-label="${what}">
     <button type="button" class="icon-btn small" data-act="ing-del" data-i="${i}" aria-label="${what} entfernen" tabindex="-1">${ui('x')}</button>
     <div class="ing-prev" id="prev-${i}">${ingPreviewHtml(g, i)}</div>
   </div>`;
@@ -716,21 +925,21 @@ function onIngNameDone(input) {
 function addIngRow(sp) {
   const own = E.draft.ings.map((g, i) => ({ g, i })).filter(x => !!x.g.sp === sp);
   const last = own[own.length - 1];
-  if (last && !last.g.t.trim()) { $(`[data-ing-a="${last.i}"]`)?.focus(); return; }
+  if (last && !last.g.t.trim()) { $(`[data-ing="${last.i}"]`)?.focus(); return; }
   E.draft.ings.push(blankIng(sp));
   const i = E.draft.ings.length - 1;
   const box = $(sp ? '#ed-sp' : '#ed-main');
   box.insertAdjacentHTML('beforeend', ingRowHtml(E.draft.ings[i], i, !own.length));
-  $(`[data-ing-a="${i}"]`).focus();
+  $(`[data-ing="${i}"]`).focus();
 }
-/** Enter: Menge → Zutat; Zutat (mit Namen) → nächste Zeile bzw. neue Zeile. */
+/** Enter: Zutat (mit Namen) → Menge; Menge → nächste Zeile bzw. neue Zeile. */
 function onIngEnter(input) {
   const row = input.closest('.ing-row');
-  if (input.matches('.ing-amt')) { row.querySelector('.ing-input').focus(); return; }
   const g = E.draft.ings[+row.dataset.i];
-  if (!g?.n.trim()) return;
+  if (!g?.n.trim()) { row.querySelector('.ing-input').focus(); return; }
+  if (input.matches('.ing-input')) { row.querySelector('.ing-amt').focus(); return; }
   const next = row.nextElementSibling;
-  if (next) next.querySelector('.ing-amt').focus();
+  if (next) next.querySelector('.ing-input').focus();
   else addIngRow(!!g.sp);
 }
 function onEdField(t) {
@@ -1037,7 +1246,7 @@ const A = {
     }
     if (!inEditor && a.status === 'noamount') {
       location.hash = `#/rezept/${D.id}/bearbeiten`;
-      toast('Trag bei der Zutat links eine Menge ein – in g, ml oder als Stückzahl.');
+      toast('Trag bei der Zutat eine Menge ein – in Gramm, Milliliter oder als Stückzahl.');
       return;
     }
     openFoodPicker(a.p.name || g.t, foodId => {
@@ -1087,6 +1296,48 @@ const A = {
     toast(`„${r.title}“ gelöscht`, { action: 'Rückgängig', onAction: () => { state.recipes.splice(idx, 0, r); save(); location.hash = '#/rezept/' + r.id; } });
   },
 
+  // ---- Kochmodus ----
+  'cook-step': el => {
+    const ck = state.cook, i = +el.dataset.i;
+    if (!ck) return;
+    const done = !ck.steps.includes(i);
+    ck.steps = done ? [...ck.steps, i] : ck.steps.filter(x => x !== i);
+    save();
+    drawCook();
+    if (done) $('.cook-step.current')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  },
+  'cook-ing': el => {
+    const ck = state.cook, i = +el.dataset.i;
+    if (!ck) return;
+    ck.ings = ck.ings.includes(i) ? ck.ings.filter(x => x !== i) : [...ck.ings, i];
+    save();
+    drawCook();
+  },
+  'cook-reset': () => {
+    if (!state.cook) return;
+    state.cook = { id: state.cook.id, steps: [], ings: [] };
+    save();
+    drawCook();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+  'cook-finish': () => {
+    const id = state.cook?.id;
+    state.cook = null;
+    save();
+    goBack(id ? '#/rezept/' + id : '#/rezepte');
+  },
+  'cook-timer': el => startTimer(+el.dataset.sec, el.dataset.label || 'Timer'),
+  'timer-add': el => {
+    const t = state.timers.find(x => x.id === el.dataset.t);
+    if (!t) return;
+    t.end += 60000;
+    t.dur += 60;
+    save();
+    drawTimers();
+  },
+  'timer-del': el => ackTimers(el.dataset.t),
+  'timer-ok': el => ackTimers(el.dataset.t),
+
   'ing-add': el => addIngRow(el.dataset.sp === '1'),
   'ing-del': el => {
     const i = +el.dataset.i;
@@ -1102,6 +1353,8 @@ const A = {
     const rec = {
       id: E.id || uid(),
       title,
+      ...(minutes(d.prepMin) ? { prepMin: minutes(d.prepMin) } : {}),
+      ...(minutes(d.cookMin) ? { cookMin: minutes(d.cookMin) } : {}),
       ings: d.ings.filter(g => g.t.trim()).map(g => ({
         t: g.t.trim(), a: g.a.trim(), u: g.u, n: g.n.trim(), sp: !!g.sp,
         ...(g.l ? { l: true, ln: g.ln, ...(g.f ? { f: g.f } : {}) } : {}),
@@ -1300,6 +1553,7 @@ document.addEventListener('keydown', e => {
   else if (t.id === 'fp-q') { e.preventDefault(); $('#fp-results .pick')?.click(); }
   else if (t.id === 'spec-input') { e.preventDefault(); closeSheet(); }
   else if (t.id === 'store-name') { e.preventDefault(); t.blur(); }
+  else if (t.matches?.('.cook-step')) { e.preventDefault(); A['cook-step'](t); }
 });
 document.addEventListener('submit', e => e.preventDefault());
 
@@ -1313,6 +1567,7 @@ function route() {
   else if (h === '#/rezepte') { currentView = 'recipes'; tab = 'rezepte'; renderRecipes(); }
   else if (h === '#/rezept/neu') { currentView = 'editor'; tab = 'rezepte'; renderEditor(null); }
   else if ((m = h.match(/^#\/rezept\/([\w-]+)\/bearbeiten$/))) { currentView = 'editor'; tab = 'rezepte'; renderEditor(m[1]); }
+  else if ((m = h.match(/^#\/rezept\/([\w-]+)\/kochen$/))) { currentView = 'cook'; tab = 'rezepte'; renderCook(m[1]); }
   else if ((m = h.match(/^#\/rezept\/([\w-]+)$/))) { currentView = 'recipe'; tab = 'rezepte'; renderRecipe(m[1]); }
   else if (h === '#/einstellungen') { currentView = 'settings'; tab = 'einstellungen'; renderSettings(); }
   else if (h === '#/maerkte') { currentView = 'stores'; tab = 'einstellungen'; renderStores(); }
@@ -1320,6 +1575,8 @@ function route() {
   else { location.replace('#/liste'); return; }
   document.querySelectorAll('.tabbar a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
   document.body.dataset.view = currentView;
+  if (currentView === 'cook') lockScreen(); else unlockScreen();
+  drawTimers();
   window.scrollTo(0, 0);
 }
 addEventListener('hashchange', () => { navCount++; route(); });
@@ -1353,6 +1610,7 @@ function registerSW() {
   addEventListener('save-error', () => toast('Speichern fehlgeschlagen – ist der Speicher voll?'));
   await loadSprite();
   route();
+  ensureTimerLoop();
   navigator.storage?.persist?.().catch(() => {});
   registerSW();
 })();
