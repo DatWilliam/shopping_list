@@ -1,10 +1,10 @@
 // Küchenzettel – Einkaufsliste & Rezepte mit Nährwerten.
 import { CAT_BY_ID, FOODS, FOOD_BY_ID } from './foods.js';
 import * as I from './ingredients.js';
-import { state, save, flush, uid, exportJSON, parseBackup, applyBackup, DEFAULT_ORDER } from './store.js';
+import { state, save, flush, uid, exportJSON, parseBackup, applyBackup, DEFAULT_ORDER, activeStore } from './store.js';
 import { searchOFF } from './off.js';
 
-const VERSION = '1.0';
+const VERSION = '1.2';
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const cap = s => { s = String(s || '').trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
@@ -33,6 +33,8 @@ const UI = {
   tag: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
   leaf: '<path d="M11 20A7 7 0 0 1 4 13c0-5 4-9 16-10-1 12-5 17-9 17z"/><path d="M4 21c4-4 7-7 11-11"/>',
   bulb: '<path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V16h8v-1.3A7 7 0 0 0 12 2z"/>',
+  store: '<path d="M4 10v10h16V10"/><path d="M3 4h18l-1.2 5.2a2.4 2.4 0 0 1-4.6.3 2.6 2.6 0 0 1-5 0 2.4 2.4 0 0 1-4.6-.3L3 4z"/><path d="M10 20v-5h4v5"/>',
+  next: '<path d="M9 6l6 6-6 6"/>',
 };
 const ui = (name, cls = 'ui') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${UI[name]}</svg>`;
 
@@ -59,7 +61,7 @@ function icon(food, cls = 'ico') {
   const ch = (food?.n || '?').trim().charAt(0).toUpperCase() || '?';
   return `<span class="${cls} ico-letter" aria-hidden="true">${esc(ch)}</span>`;
 }
-const catOptions = sel => state.catOrder.map(id => `<option value="${id}"${id === sel ? ' selected' : ''}>${esc(CAT_BY_ID[id].n)}</option>`).join('');
+const catOptions = sel => activeStore().order.map(id => `<option value="${id}"${id === sel ? ' selected' : ''}>${esc(CAT_BY_ID[id].n)}</option>`).join('');
 
 /** Eigenes Lebensmittel für einen unbekannten Namen (Kategorie & Icon werden geraten). */
 function ensureCustomFood(rawName) {
@@ -139,7 +141,8 @@ const onListIds = () => new Set(state.list.map(i => i.f));
 function renderList() {
   view.innerHTML = `
   <header class="top">
-    <div class="top-row"><h1>Einkaufsliste</h1><span class="count" id="list-count"></span></div>
+    <div class="top-row"><h1>Einkaufsliste</h1><span class="count" id="list-count"></span>
+      ${state.stores.length > 1 ? `<button type="button" class="store-chip" data-act="store-menu" aria-label="Supermarkt wechseln, ausgewählt: ${esc(activeStore().name)}">${ui('store')}<span>${esc(activeStore().name)}</span>${ui('down')}</button>` : ''}</div>
     <div class="search">
       ${ui('plus')}
       <input id="add-input" type="text" placeholder="Was brauchst du? z. B. 2 Zwiebeln" autocomplete="off" enterkeyhint="done" aria-label="Artikel hinzufügen">
@@ -177,7 +180,7 @@ function drawListBody() {
     const touch = matchMedia('(pointer: coarse)').matches;
     html += `<p class="hint-bar">${touch ? 'Antippen = gekauft · Gedrückt halten' : 'Klick = gekauft · Rechtsklick'} = Menge & Infos <button class="link" type="button" data-act="hide-hint">Verstanden</button></p>`;
   }
-  for (const cid of state.catOrder) {
+  for (const cid of activeStore().order) {
     const arr = groups.get(cid);
     if (!arr) continue;
     html += `<section class="group"><h2 class="group-title">${esc(CAT_BY_ID[cid].n)}</h2><div class="tiles">
@@ -198,7 +201,7 @@ function drawListBody() {
 
 function catalogHtml(on) {
   const foods = allFoods();
-  return state.catOrder.map(cid => {
+  return activeStore().order.map(cid => {
     const inCat = foods.filter(f => catOf(f) === cid);
     if (!inCat.length) return '';
     const c = CAT_BY_ID[cid], open = openCats.has(cid);
@@ -431,19 +434,21 @@ function drawPicker(q) {
 // =====================================================================
 // Rezepte
 // =====================================================================
-function computeRecipe(r, servings) {
-  const base = Math.max(1, parseInt(r.servings, 10) || 1);
-  servings = servings || base;
-  const f = servings / base;
+function computeRecipe(r) {
   const rows = r.ings.map(g => I.analyze(g, ctx));
-  const total = I.sumNutrition(rows).map(x => x * f);
   return {
-    rows, f, total,
-    per: total.map(x => x / servings),
+    rows,
+    total: I.sumNutrition(rows),
+    grams: rows.reduce((s, a) => s + (a.grams || 0), 0),
     issues: rows.filter(a => I.ISSUE.has(a.status)).length,
     count: rows.filter(a => a.status !== 'header' && a.status !== 'empty').length,
   };
 }
+const fmtWeight = g => (g >= 1000 ? `${(Math.round(g / 100) / 10).toLocaleString('de-DE')} kg` : `${Math.round(g / 10) * 10 || Math.round(g)} g`);
+
+// Gewürze stehen im Rezept getrennt (hat man meistens da). sp = true/false; fehlt es (alte Rezepte), nach Kategorie raten.
+const autoSpice = g => { const f = I.analyze(g, ctx).food; return !!f && catOf(f) === 'gewuerze'; };
+const isSpice = g => g.sp ?? autoSpice(g);
 
 function renderRecipes() {
   view.innerHTML = `
@@ -470,40 +475,41 @@ function recipeListHtml(q) {
     const c = computeRecipe(r);
     return `<a class="card recipe-card" href="#/rezept/${r.id}">
       <div class="rc-title">${esc(r.title)}</div>
-      <div class="rc-meta">${r.servings} ${+r.servings === 1 ? 'Portion' : 'Portionen'} · ${c.count} Zutaten${c.issues ? ` · <span class="warn-text">${c.issues} ohne Werte</span>` : ''}</div>
-      <div class="pills"><span class="pill kcal">${fmtInt(c.per[0])} kcal</span><span class="pill prot">${fmtG(c.per[1])} g Eiweiß</span></div>
+      <div class="rc-meta">${c.count} Zutaten${c.grams ? ` · ≈ ${fmtWeight(c.grams)}` : ''}${c.issues ? ` · <span class="warn-text">${c.issues} ohne Werte</span>` : ''}</div>
+      <div class="pills"><span class="pill kcal">${fmtInt(c.total[0])} kcal</span><span class="pill prot">${fmtG(c.total[1])} g Eiweiß</span></div>
     </a>`;
   }).join('');
 }
 
 const ISSUE_TEXT = { nofood: 'nicht erkannt – tippen zum Zuordnen', noamount: 'Menge fehlt', nonutr: 'keine Nährwerte – tippen zum Eintragen' };
 // „Menge fehlt“ oder – wenn eine Stückzahl dasteht, die sich nicht in Gramm umrechnen lässt – Hinweis auf g/ml
-const issueText = a => (a.status === 'noamount' && a.p.qty != null ? 'Stückzahl lässt sich nicht umrechnen – g oder ml wählen' : ISSUE_TEXT[a.status]);
+const issueText = a => (a.status === 'noamount' && a.p.qty != null ? 'Stückzahl lässt sich nicht umrechnen – Gramm oder Milliliter wählen' : ISSUE_TEXT[a.status]);
 
-function nutriCardHtml(c, servings) {
-  const [k, p, carb, fat, fib] = c.per;
+function nutriCardHtml(c) {
+  const [k, p, carb, fat, fib] = c.total;
   const kc = p * 4 + carb * 4 + fat * 9 || 1;
   // Balken = Anteil an den Kalorien (Ballaststoffe zählen kaum, daher ohne Balken)
   const macro = (val, label, cls, part) => `<div class="macro ${cls}"><b>${fmtG(val)} g</b><span>${label}</span>
     ${part == null ? '' : `<div class="bar" title="${Math.round((part / kc) * 100)} % der Kalorien"><i style="width:${Math.round((part / kc) * 100)}%"></i></div>`}</div>`;
   const issues = c.rows.map((a, i) => ({ a, i })).filter(x => I.ISSUE.has(x.a.status));
   return `<section class="nutri-card">
-    <div class="nutri-main"><b>${fmtInt(k)}</b><span>kcal pro Portion</span></div>
+    <div class="nutri-main"><b>${fmtInt(k)}</b><span>kcal gesamt</span></div>
     <div class="macros">${macro(p, 'Eiweiß', 'm-p', p * 4)}${macro(carb, 'Kohlenhydr.', 'm-c', carb * 4)}${macro(fat, 'Fett', 'm-f', fat * 9)}${macro(fib, 'Ballastst.', 'm-b', null)}</div>
-    <p class="muted small">Gesamt ${fmtInt(c.total[0])} kcal · ${fmtG(c.total[1])} g Eiweiß${servings > 1 ? ` · für ${servings} Portionen` : ''}</p>
+    ${c.grams ? `<p class="muted small">Alle Zutaten zusammen ≈ ${fmtWeight(c.grams)}</p>` : ''}
     ${issues.length ? `<div class="issues"><p>${ui('alert')} <b>${issues.length === 1 ? '1 Zutat wird' : issues.length + ' Zutaten werden'} nicht mitgerechnet:</b></p>
       <ul>${issues.map(({ a, i }) => `<li><button type="button" class="link" data-act="relink" data-i="${i}">${esc(a.food?.n || a.p.name || '?')}</button> <span class="muted">– ${issueText(a)}</span></li>`).join('')}</ul></div>` : ''}
   </section>`;
 }
 
 // ---------- Rezept ansehen ----------
-let D = null; // { id, servings, sel: Set }
+let D = null; // { id, sel: Set }
 const splitSteps = s => String(s || '').split(/\n+/).map(x => x.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim()).filter(Boolean);
+const selectableRow = a => a.status !== 'header' && a.status !== 'empty';
 
 function renderRecipe(id) {
   const r = state.recipes.find(x => x.id === id);
   if (!r) { location.replace('#/rezepte'); return; }
-  if (!D || D.id !== id) D = { id, servings: Math.max(1, parseInt(r.servings, 10) || 1), sel: new Set() };
+  if (!D || D.id !== id) D = { id, sel: new Set() };
   view.innerHTML = `
   <header class="top bar">
     <a class="icon-btn" href="#/rezepte" data-act="back" aria-label="Zurück">${ui('back')}</a>
@@ -519,24 +525,23 @@ function drawRecipe() {
   const r = D && state.recipes.find(x => x.id === D.id);
   const el = $('#recipe-view');
   if (!r || !el) return;
-  const c = computeRecipe(r, D.servings);
+  const c = computeRecipe(r);
   const on = onListIds();
-  const selectable = c.rows.map((a, i) => i).filter(i => !['header', 'empty'].includes(c.rows[i].status));
-  const allSel = selectable.length > 0 && selectable.every(i => D.sel.has(i));
+  const idx = r.ings.map((g, i) => i);
+  const main = idx.filter(i => !isSpice(r.ings[i]));
+  const spices = idx.filter(i => isSpice(r.ings[i]));
+  const mainSel = main.filter(i => selectableRow(c.rows[i]));
+  const allSel = mainSel.length > 0 && mainSel.every(i => D.sel.has(i));
+  const li = i => ingLiHtml(r, c.rows[i], i, on);
   const steps = splitSteps(r.steps);
   el.innerHTML = `
     <h1 class="recipe-title">${esc(r.title)}</h1>
-    <div class="servings"><span>Portionen</span>
-      <div class="stepper">
-        <button type="button" class="icon-btn" data-act="serv" data-d="-1" aria-label="Weniger Portionen"${D.servings <= 1 ? ' disabled' : ''}>${ui('minus')}</button>
-        <b>${D.servings}</b>
-        <button type="button" class="icon-btn" data-act="serv" data-d="1" aria-label="Mehr Portionen">${ui('plus')}</button>
-      </div></div>
-    ${nutriCardHtml(c, D.servings)}
+    ${nutriCardHtml(c)}
     <section class="block">
-      <div class="section-head"><h2>Zutaten</h2>${selectable.length ? `<button type="button" class="link" data-act="sel-all">${allSel ? 'Auswahl aufheben' : 'Alle auswählen'}</button>` : ''}</div>
-      ${selectable.length ? `<p class="muted small">Wähle aus, was dir fehlt – dann ab auf die Einkaufsliste.</p>` : '<p class="muted">Noch keine Zutaten.</p>'}
-      <ul class="ing-list">${c.rows.map((a, i) => ingLiHtml(r, a, i, c.f, on)).join('')}</ul>
+      <div class="section-head"><h2>Zutaten</h2>${mainSel.length ? `<button type="button" class="link" data-act="sel-all">${allSel ? 'Auswahl aufheben' : 'Alle auswählen'}</button>` : ''}</div>
+      ${c.count ? `<p class="muted small">Wähle aus, was dir fehlt – dann ab auf die Einkaufsliste.</p>` : '<p class="muted">Noch keine Zutaten.</p>'}
+      ${main.length ? `<ul class="ing-list">${main.map(li).join('')}</ul>` : ''}
+      ${spices.length ? `<h3 class="sub-head">Gewürze</h3><ul class="ing-list">${spices.map(li).join('')}</ul>` : ''}
     </section>
     ${steps.length ? `<section class="block"><h2>Zubereitung</h2><ol class="steps">${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></section>` : ''}
     ${r.notes?.trim() ? `<section class="block"><h2>Notizen</h2><p class="notes">${esc(r.notes)}</p></section>` : ''}
@@ -544,12 +549,12 @@ function drawRecipe() {
   updateCta();
 }
 
-function ingLiHtml(r, a, i, f, on) {
+function ingLiHtml(r, a, i, on) {
   if (a.status === 'empty') return '';
   if (a.status === 'header') return `<li class="ing-head">${esc(a.p.name)}</li>`;
-  const text = I.scaledText(r.ings[i].t, a.p, f).replace(/^\s*[-*•·]\s+/, '').trim();
+  const text = r.ings[i].t.replace(/^\s*[-*•·]\s+/, '').trim();
   let right = '';
-  if (a.status === 'ok') right = `${fmtInt(a.nutr[0] * f)} kcal`;
+  if (a.status === 'ok') right = `${fmtInt(a.nutr[0])} kcal`;
   else if (I.ISSUE.has(a.status)) right = `<button type="button" class="warn-chip" data-act="relink" data-i="${i}" aria-label="Nährwerte ergänzen">?</button>`;
   return `<li><label class="ing">
       <input type="checkbox" data-change="sel" data-i="${i}"${D.sel.has(i) ? ' checked' : ''}>
@@ -569,11 +574,17 @@ function updateCta() {
 
 // ---------- Rezept bearbeiten ----------
 let E = null; // { id, key, draft, dirty }
-// Editor-Zeile: t = Zeile für Parser & Anzeige, a/u/n = Menge, Einheit (stk|g|ml), Zutat
-const blankIng = () => ({ t: '', a: '', u: 'stk', n: '' });
-const editIng = g => (g.n != null ? { a: '', u: 'stk', ...g } : { ...g, ...I.splitIng(g.t) });
-function ensureBlankRow(ings) {
-  if (!ings.length || ings[ings.length - 1].t.trim()) ings.push(blankIng());
+// Editor-Zeile: t = Zeile für Parser & Anzeige, a/u/n = Menge, Einheit (stk|g|ml), Zutat, sp = Gewürz
+const blankIng = sp => ({ t: '', a: '', u: 'stk', n: '', sp });
+function editIng(g) {
+  const r = g.n != null ? { a: '', u: 'stk', ...g } : { ...g, ...I.splitIng(g.t) };
+  r.sp ??= autoSpice(r);
+  return r;
+}
+/** In beiden Rubriken mindestens eine Zeile zum Eintippen. */
+function ensureRows(ings) {
+  if (!ings.some(g => !g.sp)) ings.push(blankIng(false));
+  if (!ings.some(g => g.sp)) ings.push(blankIng(true));
 }
 
 function renderEditor(id) {
@@ -583,9 +594,8 @@ function renderEditor(id) {
   const restored = state.draft?.key === key;
   const draft = restored
     ? state.draft.data
-    : structuredClone(r || { title: '', servings: 2, ings: [], steps: '', notes: '' });
+    : structuredClone(r || { title: '', ings: [], steps: '', notes: '' });
   draft.ings = draft.ings.map(editIng);
-  ensureBlankRow(draft.ings);
   E = { id, key, draft, dirty: restored };
   view.innerHTML = `
   <header class="top bar">
@@ -595,26 +605,35 @@ function renderEditor(id) {
   </header>
   <form class="pad editor" id="editor" autocomplete="off">
     <label class="field"><span>Titel</span><input data-ed="title" value="${esc(draft.title)}" placeholder="z. B. Thai-Curry mit Huhn"></label>
-    <label class="field serv-field"><span>Portionen</span><input data-ed="servings" type="number" inputmode="numeric" min="1" max="99" value="${esc(draft.servings)}"></label>
     <div class="section-head"><h2>Zutaten</h2><span class="muted small">Menge · Einheit · Zutat</span></div>
-    <div id="ed-ings" class="ed-ings">${draft.ings.map(ingRowHtml).join('')}</div>
-    <p class="muted small">Menge als Stück, g oder ml – oder leer lassen, z. B. bei Salz. Du kannst auch eine ganze Zutatenliste ins Zutatenfeld einfügen, die Mengen werden dabei übernommen. Zwischenüberschriften enden mit „:“.</p>
+    <div id="ed-main" class="ed-ings"></div>
+    <button type="button" class="btn ghost small add-row" data-act="ing-add" data-sp="0">${ui('plus')} Zutat</button>
+    <div class="section-head"><h2>Gewürze</h2><span class="muted small">hast du meistens da</span></div>
+    <div id="ed-sp" class="ed-ings"></div>
+    <button type="button" class="btn ghost small add-row" data-act="ing-add" data-sp="1">${ui('plus')} Gewürz</button>
+    <p class="muted small ed-hint">Menge in Stück, Gramm oder Milliliter – oder leer lassen. Eine ganze Zutatenliste kannst du auch auf einmal ins Zutatenfeld einfügen, Gewürze werden dabei automatisch einsortiert. Zwischenüberschriften enden mit „:“.</p>
     <div id="ed-nutri"></div>
     <label class="field"><span>Zubereitung</span><textarea data-ed="steps" rows="8" placeholder="Ein Schritt pro Zeile">${esc(draft.steps)}</textarea></label>
     <label class="field"><span>Notizen</span><textarea data-ed="notes" rows="3" placeholder="Tipps, Varianten …">${esc(draft.notes)}</textarea></label>
   </form>`;
-  drawEditorNutri();
+  redrawIngs();
   if (restored) toast('Ungespeicherter Entwurf wiederhergestellt', { action: 'Verwerfen', onAction: () => { state.draft = null; save(); renderEditor(id); } });
   else if (!id) $('[data-ed="title"]').focus();
 }
 
-const UNIT_OPTS = [['stk', 'Stk'], ['g', 'g'], ['ml', 'ml']];
-function ingRowHtml(g, i) {
+// Im Auswahlmenü stehen die vollen Namen, im Feld die Abkürzung
+const UNIT_OPTS = [['stk', 'Stk', 'Stück'], ['g', 'g', 'Gramm'], ['ml', 'ml', 'Milliliter']];
+const unitShort = u => (UNIT_OPTS.find(o => o[0] === u) || UNIT_OPTS[0])[1];
+
+function ingRowHtml(g, i, first) {
+  const what = g.sp ? 'Gewürz' : 'Zutat';
+  const ph = first ? (g.sp ? 'z. B. Paprikapulver' : 'z. B. Hähnchenbrust') : (g.sp ? 'Weiteres Gewürz' : 'Weitere Zutat');
   return `<div class="ing-row" data-i="${i}">
-    <input class="ing-amt" data-ing-a="${i}" value="${esc(g.a)}" placeholder="Menge" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Menge Zutat ${i + 1}">
-    <select class="ing-unit" data-ing-u="${i}" aria-label="Einheit Zutat ${i + 1}">${UNIT_OPTS.map(([v, l]) => `<option value="${v}"${g.u === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
-    <input class="ing-input" data-ing="${i}" value="${esc(g.n)}" placeholder="${i === 0 ? 'z. B. Hähnchenbrust' : 'Weitere Zutat'}" enterkeyhint="next" autocomplete="off" aria-label="Zutat ${i + 1}">
-    <button type="button" class="icon-btn small" data-act="ing-del" data-i="${i}" aria-label="Zutat ${i + 1} entfernen" tabindex="-1">${ui('x')}</button>
+    <input class="ing-amt" data-ing-a="${i}" value="${esc(g.a)}" placeholder="Menge" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Menge">
+    <label class="ing-unit"><span class="ing-unit-txt">${unitShort(g.u)}</span>
+      <select data-ing-u="${i}" aria-label="Einheit">${UNIT_OPTS.map(([v, , long]) => `<option value="${v}"${g.u === v ? ' selected' : ''}>${long}</option>`).join('')}</select></label>
+    <input class="ing-input" data-ing="${i}" value="${esc(g.n)}" placeholder="${ph}" enterkeyhint="next" autocomplete="off" aria-label="${what}">
+    <button type="button" class="icon-btn small" data-act="ing-del" data-i="${i}" aria-label="${what} entfernen" tabindex="-1">${ui('x')}</button>
     <div class="ing-prev" id="prev-${i}">${ingPreviewHtml(g, i)}</div>
   </div>`;
 }
@@ -626,9 +645,9 @@ function ingPreviewHtml(g, i) {
   switch (a.status) {
     case 'header': return `<span class="prev muted">Zwischenüberschrift</span>`;
     case 'ok': {
-      // „200“ + Stk ist fast immer vergessenes „g“
+      // „200“ + Stück ist fast immer vergessenes „Gramm“
       const many = g.u === 'stk' && g.a?.trim() && !a.p.unit && a.p.qty >= 50;
-      const note = many ? ' · <em>wirklich Stück? Sonst g oder ml wählen</em>' : a.guess ? ' · <em>stimmt das?</em>' : '';
+      const note = many ? ' · <em>wirklich Stück? Sonst Gramm oder Milliliter wählen</em>' : a.guess ? ' · <em>stimmt das?</em>' : '';
       return btn(a.guess || many ? 'guess' : '', `${icon(a.food, 'ico xs')}<span>${esc(a.food.n)} · ${fmtInt(a.grams)} g · <b>${fmtInt(a.nutr[0])} kcal</b> · ${fmtG(a.nutr[1])} g Eiweiß${note}</span>`);
     }
     case 'zero': return btn('', `${icon(a.food, 'ico xs')}<span>${esc(a.food.n)} · zählt nicht</span>`);
@@ -642,14 +661,22 @@ function ingPreviewHtml(g, i) {
 function drawEditorNutri() {
   const box = $('#ed-nutri');
   if (!box || !E) return;
-  const servings = Math.max(1, parseInt(E.draft.servings, 10) || 1);
-  box.innerHTML = nutriCardHtml(computeRecipe(E.draft, servings), servings);
+  box.innerHTML = nutriCardHtml(computeRecipe(E.draft));
 }
 function redrawIngs() {
-  const box = $('#ed-ings');
-  if (!box) return;
-  ensureBlankRow(E.draft.ings);
-  box.innerHTML = E.draft.ings.map(ingRowHtml).join('');
+  if (!$('#ed-main') || !E) return;
+  ensureRows(E.draft.ings);
+  const rows = sp => {
+    let first = true;
+    return E.draft.ings.map((g, i) => {
+      if (!!g.sp !== sp) return '';
+      const h = ingRowHtml(g, i, first);
+      first = false;
+      return h;
+    }).join('');
+  };
+  $('#ed-main').innerHTML = rows(false);
+  $('#ed-sp').innerHTML = rows(true);
   drawEditorNutri();
 }
 function persistDraft() {
@@ -660,50 +687,54 @@ function persistDraft() {
 const ingRowIndex = el => +el.closest('.ing-row').dataset.i;
 /** Eine der drei Eingaben einer Zutatenzeile hat sich geändert. */
 function onIngInput(el) {
-  const i = ingRowIndex(el), g = E?.draft.ings[i];
-  if (!g) return;
   const row = el.closest('.ing-row');
+  const i = +row.dataset.i, g = E?.draft.ings[i];
+  if (!g) return;
   g.a = row.querySelector('.ing-amt').value;
-  g.u = row.querySelector('.ing-unit').value;
+  g.u = row.querySelector('[data-ing-u]').value;
   g.n = row.querySelector('.ing-input').value;
+  row.querySelector('.ing-unit-txt').textContent = unitShort(g.u);
   g.t = I.joinIng(g);
   if (g.l && I.compact(I.parseLine(g.t).name) !== g.ln) { delete g.l; delete g.f; delete g.ln; }
   $('#prev-' + i).innerHTML = ingPreviewHtml(g, i);
-  if (i === E.draft.ings.length - 1 && g.t.trim()) {
-    E.draft.ings.push(blankIng());
-    $('#ed-ings').insertAdjacentHTML('beforeend', ingRowHtml(blankIng(), i + 1));
-  }
   drawEditorNutri();
   persistDraft();
 }
 /** „200 g Hack“ ins Zutatenfeld getippt (Menge leer) → beim Verlassen auf die drei Felder verteilen. */
 function onIngNameDone(input) {
-  const i = ingRowIndex(input), g = E?.draft.ings[i];
+  const g = E?.draft.ings[ingRowIndex(input)];
   if (!g || g.a.trim()) return;
   const s = I.splitIng(g.n);
   if (!s.a) return;
   const row = input.closest('.ing-row');
   row.querySelector('.ing-amt').value = s.a;
-  row.querySelector('.ing-unit').value = s.u;
+  row.querySelector('[data-ing-u]').value = s.u;
   input.value = s.n;
   onIngInput(input);
 }
+/** Neue leere Zeile in der Rubrik – außer die letzte ist ohnehin noch leer. */
+function addIngRow(sp) {
+  const own = E.draft.ings.map((g, i) => ({ g, i })).filter(x => !!x.g.sp === sp);
+  const last = own[own.length - 1];
+  if (last && !last.g.t.trim()) { $(`[data-ing-a="${last.i}"]`)?.focus(); return; }
+  E.draft.ings.push(blankIng(sp));
+  const i = E.draft.ings.length - 1;
+  const box = $(sp ? '#ed-sp' : '#ed-main');
+  box.insertAdjacentHTML('beforeend', ingRowHtml(E.draft.ings[i], i, !own.length));
+  $(`[data-ing-a="${i}"]`).focus();
+}
+/** Enter: Menge → Zutat; Zutat (mit Namen) → nächste Zeile bzw. neue Zeile. */
 function onIngEnter(input) {
-  const i = ingRowIndex(input);
-  if (input.matches('.ing-amt')) { $(`[data-ing="${i}"]`).focus(); return; }
-  let next = $(`[data-ing-a="${i + 1}"]`);
-  if (!next) {
-    if (!E.draft.ings[i]?.t.trim()) return;
-    E.draft.ings.push(blankIng());
-    $('#ed-ings').insertAdjacentHTML('beforeend', ingRowHtml(blankIng(), i + 1));
-    next = $(`[data-ing-a="${i + 1}"]`);
-  }
-  next.focus();
+  const row = input.closest('.ing-row');
+  if (input.matches('.ing-amt')) { row.querySelector('.ing-input').focus(); return; }
+  const g = E.draft.ings[+row.dataset.i];
+  if (!g?.n.trim()) return;
+  const next = row.nextElementSibling;
+  if (next) next.querySelector('.ing-amt').focus();
+  else addIngRow(!!g.sp);
 }
 function onEdField(t) {
-  const k = t.dataset.ed;
-  E.draft[k] = t.value;
-  if (k === 'servings') drawEditorNutri();
+  E.draft[t.dataset.ed] = t.value;
   persistDraft();
 }
 document.addEventListener('paste', e => {
@@ -718,11 +749,16 @@ document.addEventListener('paste', e => {
   lines[lines.length - 1] += t.value.slice(t.selectionEnd);
   const rows = lines.map(x => ({ t: x, ...I.splitIng(x) }));
   if (g.a.trim()) rows[0] = { a: g.a, u: g.u, n: lines[0] }; // schon eingetragene Menge behalten
-  rows.forEach(r => { r.t = I.joinIng(r); });
-  E.draft.ings.splice(i, 1, ...rows);
+  // In die Gewürze eingefügt → alles Gewürze; bei den Zutaten → Gewürze automatisch erkennen
+  rows.forEach(r => { r.t = I.joinIng(r); r.sp = !!g.sp || autoSpice(r); });
+  const same = rows.filter(r => r.sp === !!g.sp), moved = rows.filter(r => r.sp !== !!g.sp);
+  E.draft.ings.splice(i, 1, ...same);
+  // in die andere Rubrik einsortierte Zeilen hinten anstellen (leere Platzhalter dort entfallen)
+  if (moved.length) E.draft.ings = E.draft.ings.filter(r => r.t.trim() || !!r.sp === !!g.sp).concat(moved);
   redrawIngs();
   persistDraft();
-  $(`[data-ing-a="${Math.min(i + lines.length, E.draft.ings.length - 1)}"]`)?.focus();
+  const last = same.length ? E.draft.ings.indexOf(same[same.length - 1]) : -1;
+  if (last >= 0) $(`[data-ing="${last}"]`)?.focus();
 });
 
 let navCount = 0;
@@ -737,18 +773,16 @@ function goBack(fallback) {
 let pendingImport = null;
 function renderSettings() {
   const customs = Object.values(state.customFoods).sort((a, b) => a.n.localeCompare(b.n, 'de'));
-  const last = state.catOrder.length - 1;
+  const n = state.stores.length;
   view.innerHTML = `
   <header class="top"><div class="top-row"><h1>Mehr</h1></div></header>
   <div class="pad stack">
-    <section class="card">
-      <h2>Reihenfolge im Supermarkt</h2>
-      <p class="muted small">So sortiert die Einkaufsliste deine Artikel – am besten in der Reihenfolge deines Wegs durch den Markt.</p>
-      <ol class="order-list">${state.catOrder.map((id, i) => `<li>${icon(CAT_BY_ID[id], 'ico sm')}<span class="grow">${esc(CAT_BY_ID[id].n)}</span>
-        <button type="button" class="icon-btn" data-act="cat-move" data-i="${i}" data-d="-1" aria-label="${esc(CAT_BY_ID[id].n)} nach oben"${i === 0 ? ' disabled' : ''}>${ui('up')}</button>
-        <button type="button" class="icon-btn" data-act="cat-move" data-i="${i}" data-d="1" aria-label="${esc(CAT_BY_ID[id].n)} nach unten"${i === last ? ' disabled' : ''}>${ui('down')}</button></li>`).join('')}</ol>
-      <button type="button" class="btn ghost small" data-act="cat-reset">Standard wiederherstellen</button>
-    </section>
+    <a class="card nav-card" href="#/maerkte">
+      <span class="nav-ico">${ui('store')}</span>
+      <span class="grow"><b>Supermärkte & Reihenfolge</b>
+        <small>Ausgewählt: ${esc(activeStore().name)}${n > 1 ? ` · ${n} gespeichert` : ''}</small></span>
+      ${ui('next')}
+    </a>
     <section class="card">
       <h2>Eigene Lebensmittel</h2>
       ${customs.length
@@ -779,6 +813,84 @@ function renderSettings() {
       <p>Nährwerte sind Richtwerte. Icons: <a href="https://openmoji.org" target="_blank" rel="noopener">OpenMoji</a> (CC BY-SA 4.0). Produktdaten: <a href="https://openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> (ODbL).</p>
     </section>
   </div>`;
+}
+
+// ---------- Supermärkte ----------
+const storeById = id => state.stores.find(x => x.id === id);
+let focusStoreName = null;
+
+function renderStores() {
+  view.innerHTML = `
+  <header class="top bar">
+    <a class="icon-btn" href="#/einstellungen" data-act="back" aria-label="Zurück">${ui('back')}</a>
+    <h1 class="bar-title">Supermärkte</h1>
+    <span class="bar-spacer"></span>
+  </header>
+  <div class="pad stack">
+    <p class="muted small">Jeder Supermarkt hat seine eigene Reihenfolge der Bereiche. Die Einkaufsliste sortiert nach dem ausgewählten – tipp einen an, um ihn auszuwählen.</p>
+    <div class="card store-list">${state.stores.map(s => {
+      const on = s.id === state.storeId;
+      return `<div class="store-row${on ? ' on' : ''}">
+        <button type="button" class="store-pick" data-act="store-pick" data-store="${esc(s.id)}" aria-pressed="${on}">
+          <span class="radio" aria-hidden="true"></span>
+          <span class="grow"><b>${esc(s.name)}</b><small>${on ? 'Ausgewählt' : 'Antippen zum Auswählen'}</small></span>
+        </button>
+        <a class="icon-btn" href="#/markt/${esc(s.id)}" aria-label="${esc(s.name)} bearbeiten">${ui('edit')}</a>
+      </div>`;
+    }).join('')}</div>
+    <button type="button" class="btn" data-act="store-add">${ui('plus')} Supermarkt hinzufügen</button>
+  </div>`;
+}
+
+function renderStore(id) {
+  const s = storeById(id);
+  if (!s) { location.replace('#/maerkte'); return; }
+  const on = s.id === state.storeId;
+  view.innerHTML = `
+  <header class="top bar">
+    <a class="icon-btn" href="#/maerkte" data-act="back" aria-label="Zurück">${ui('back')}</a>
+    <h1 class="bar-title">Supermarkt</h1>
+    <span class="bar-spacer"></span>
+  </header>
+  <div class="pad stack">
+    <label class="field"><span>Name</span><input id="store-name" data-store="${esc(s.id)}" value="${esc(s.name)}" placeholder="z. B. REWE Hauptstraße" autocomplete="off" enterkeyhint="done"></label>
+    ${on ? `<p class="store-state">${ui('check')} Die Einkaufsliste ist nach diesem Supermarkt sortiert.</p>`
+      : `<button type="button" class="btn primary block" data-act="store-pick" data-store="${esc(s.id)}">Diesen Supermarkt auswählen</button>`}
+    <section class="card">
+      <h2>Reihenfolge der Bereiche</h2>
+      <p class="muted small">So, wie du durch den Markt läufst – von oben nach unten.</p>
+      <ol class="order-list" id="order-list"></ol>
+      <button type="button" class="btn ghost small" data-act="cat-reset" data-store="${esc(s.id)}">Standard wiederherstellen</button>
+    </section>
+    ${state.stores.length > 1 ? `<div class="center"><button type="button" class="btn ghost danger" data-act="store-delete" data-store="${esc(s.id)}">${ui('trash')} Supermarkt löschen</button></div>` : ''}
+  </div>`;
+  drawOrder(s);
+  if (focusStoreName === id) {
+    focusStoreName = null;
+    const n = $('#store-name');
+    n.focus();
+    n.select();
+  }
+}
+
+function drawOrder(s) {
+  const box = $('#order-list');
+  if (!box) return;
+  const last = s.order.length - 1;
+  box.innerHTML = s.order.map((id, i) => `<li>${icon(CAT_BY_ID[id], 'ico sm')}<span class="grow">${esc(CAT_BY_ID[id].n)}</span>
+    <button type="button" class="icon-btn" data-act="cat-move" data-store="${esc(s.id)}" data-i="${i}" data-d="-1" aria-label="${esc(CAT_BY_ID[id].n)} nach oben"${i === 0 ? ' disabled' : ''}>${ui('up')}</button>
+    <button type="button" class="icon-btn" data-act="cat-move" data-store="${esc(s.id)}" data-i="${i}" data-d="1" aria-label="${esc(CAT_BY_ID[id].n)} nach unten"${i === last ? ' disabled' : ''}>${ui('down')}</button></li>`).join('');
+}
+
+/** Schnellwahl auf der Einkaufsliste (nur bei mehreren Supermärkten sichtbar). */
+function openStoreMenu() {
+  openSheet(`
+    <div class="sheet-head"><h2 class="grow">Wo kaufst du ein?</h2>
+      <button type="button" class="icon-btn" data-act="close-sheet" aria-label="Schließen">${ui('x')}</button></div>
+    <div class="store-list">${state.stores.map(s => `<div class="store-row${s.id === state.storeId ? ' on' : ''}">
+      <button type="button" class="store-pick" data-act="store-pick" data-store="${esc(s.id)}" aria-pressed="${s.id === state.storeId}">
+        <span class="radio" aria-hidden="true"></span><span class="grow"><b>${esc(s.name)}</b></span></button></div>`).join('')}</div>
+    <div class="sheet-actions"><a class="btn ghost small" href="#/maerkte">${ui('edit')} Supermärkte verwalten</a></div>`);
 }
 
 async function onImportFile(input) {
@@ -939,26 +1051,26 @@ const A = {
   },
 
   back: el => goBack(el.getAttribute('href')),
-  serv: el => { D.servings = Math.max(1, D.servings + +el.dataset.d); drawRecipe(); },
+  // „Alle auswählen“ nimmt nur die Zutaten, nicht die Gewürze
   'sel-all': () => {
     const r = state.recipes.find(x => x.id === D.id);
-    const rows = r.ings.map(g => I.parseLine(g.t));
-    const idx = rows.map((p, i) => i).filter(i => !rows[i].header && !rows[i].empty);
+    const c = computeRecipe(r);
+    const idx = r.ings.map((g, i) => i).filter(i => !isSpice(r.ings[i]) && selectableRow(c.rows[i]));
     const all = idx.every(i => D.sel.has(i));
-    D.sel = all ? new Set() : new Set(idx);
+    idx.forEach(i => (all ? D.sel.delete(i) : D.sel.add(i)));
     drawRecipe();
   },
   'add-selected': () => {
     const r = state.recipes.find(x => x.id === D.id);
     if (!r) return;
-    const c = computeRecipe(r, D.servings);
+    const c = computeRecipe(r);
     let n = 0;
     for (const i of [...D.sel].sort((a, b) => a - b)) {
       const a = c.rows[i];
       if (!a || a.status === 'header' || a.status === 'empty') continue;
       const foodId = a.food ? a.food.id : ensureCustomFood(a.p.name || r.ings[i].t);
       if (!foodId) continue;
-      addFood(foodId, a.food?.z ? '' : I.specFromParsed(a.p, c.f), { recipe: r.title, quiet: true });
+      addFood(foodId, a.food?.z ? '' : I.specFromParsed(a.p), { recipe: r.title, quiet: true });
       n++;
     }
     D.sel = new Set();
@@ -975,6 +1087,7 @@ const A = {
     toast(`„${r.title}“ gelöscht`, { action: 'Rückgängig', onAction: () => { state.recipes.splice(idx, 0, r); save(); location.hash = '#/rezept/' + r.id; } });
   },
 
+  'ing-add': el => addIngRow(el.dataset.sp === '1'),
   'ing-del': el => {
     const i = +el.dataset.i;
     E.draft.ings.splice(i, 1);
@@ -989,9 +1102,8 @@ const A = {
     const rec = {
       id: E.id || uid(),
       title,
-      servings: Math.max(1, Math.min(99, parseInt(d.servings, 10) || 1)),
       ings: d.ings.filter(g => g.t.trim()).map(g => ({
-        t: g.t.trim(), a: g.a.trim(), u: g.u, n: g.n.trim(),
+        t: g.t.trim(), a: g.a.trim(), u: g.u, n: g.n.trim(), sp: !!g.sp,
         ...(g.l ? { l: true, ln: g.ln, ...(g.f ? { f: g.f } : {}) } : {}),
       })),
       steps: (d.steps || '').trim(),
@@ -1018,14 +1130,50 @@ const A = {
     }
   },
 
+  // ---- Supermärkte ----
   'cat-move': el => {
-    const i = +el.dataset.i, j = i + +el.dataset.d, o = state.catOrder;
-    if (j < 0 || j >= o.length) return;
+    const s = storeById(el.dataset.store);
+    const i = +el.dataset.i, j = i + +el.dataset.d, o = s?.order;
+    if (!o || j < 0 || j >= o.length) return;
     [o[i], o[j]] = [o[j], o[i]];
     save();
-    renderSettings();
+    drawOrder(s);
+    $(`[data-act="cat-move"][data-i="${j}"][data-d="${el.dataset.d}"]`)?.focus({ preventScroll: true });
   },
-  'cat-reset': () => { state.catOrder = [...DEFAULT_ORDER]; save(); renderSettings(); toast('Standard-Reihenfolge wiederhergestellt'); },
+  'cat-reset': el => {
+    const s = storeById(el.dataset.store);
+    if (!s) return;
+    s.order = [...DEFAULT_ORDER];
+    save();
+    drawOrder(s);
+    toast('Standard-Reihenfolge wiederhergestellt');
+  },
+  'store-pick': el => {
+    state.storeId = el.dataset.store;
+    save();
+    if (currentView === 'list') { closeSheet(); renderList(); toast(`Sortiert für ${activeStore().name}`); } else route();
+  },
+  'store-menu': openStoreMenu,
+  'store-add': () => {
+    const s = { id: uid(), name: `Supermarkt ${state.stores.length + 1}`, order: [...activeStore().order] };
+    state.stores.push(s);
+    save();
+    focusStoreName = s.id;
+    location.hash = '#/markt/' + s.id;
+  },
+  'store-delete': el => {
+    const idx = state.stores.findIndex(x => x.id === el.dataset.store);
+    if (idx < 0 || state.stores.length < 2) return;
+    const [s] = state.stores.splice(idx, 1);
+    const wasActive = state.storeId === s.id;
+    if (wasActive) state.storeId = state.stores[0].id;
+    save();
+    goBack('#/maerkte');
+    toast(`„${s.name}“ gelöscht`, {
+      action: 'Rückgängig',
+      onAction: () => { state.stores.splice(idx, 0, s); if (wasActive) state.storeId = s.id; save(); route(); },
+    });
+  },
   export: async () => {
     flush();
     const name = `kuechenzettel-backup-${new Date().toISOString().slice(0, 10)}.json`;
@@ -1122,6 +1270,7 @@ document.addEventListener('input', e => {
   else if (t.dataset.ing != null || t.dataset.ingA != null || t.dataset.ingU != null) onIngInput(t);
   else if (t.dataset.ed) onEdField(t);
   else if (t.id === 'fp-q') drawPicker(t.value);
+  else if (t.id === 'store-name') { const s = storeById(t.dataset.store); if (s) { s.name = t.value.trim() || 'Supermarkt'; save(); } }
 });
 document.addEventListener('change', e => {
   const t = e.target;
@@ -1129,6 +1278,7 @@ document.addEventListener('change', e => {
   else if (t.dataset.change === 'sel') { if (t.checked) D.sel.add(+t.dataset.i); else D.sel.delete(+t.dataset.i); updateCta(); }
   else if (t.id === 'import-file') onImportFile(t);
   else if (t.dataset.ing != null) onIngNameDone(t);
+  else if (t.id === 'store-name' && !t.value.trim()) t.value = storeById(t.dataset.store)?.name || '';
 });
 document.addEventListener('keydown', e => {
   const t = e.target;
@@ -1149,6 +1299,7 @@ document.addEventListener('keydown', e => {
   else if (t.id === 'off-q') { e.preventDefault(); $('[data-act="off-search"]')?.click(); }
   else if (t.id === 'fp-q') { e.preventDefault(); $('#fp-results .pick')?.click(); }
   else if (t.id === 'spec-input') { e.preventDefault(); closeSheet(); }
+  else if (t.id === 'store-name') { e.preventDefault(); t.blur(); }
 });
 document.addEventListener('submit', e => e.preventDefault());
 
@@ -1164,6 +1315,8 @@ function route() {
   else if ((m = h.match(/^#\/rezept\/([\w-]+)\/bearbeiten$/))) { currentView = 'editor'; tab = 'rezepte'; renderEditor(m[1]); }
   else if ((m = h.match(/^#\/rezept\/([\w-]+)$/))) { currentView = 'recipe'; tab = 'rezepte'; renderRecipe(m[1]); }
   else if (h === '#/einstellungen') { currentView = 'settings'; tab = 'einstellungen'; renderSettings(); }
+  else if (h === '#/maerkte') { currentView = 'stores'; tab = 'einstellungen'; renderStores(); }
+  else if ((m = h.match(/^#\/markt\/([\w-]+)$/))) { currentView = 'store'; tab = 'einstellungen'; renderStore(m[1]); }
   else { location.replace('#/liste'); return; }
   document.querySelectorAll('.tabbar a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
   document.body.dataset.view = currentView;

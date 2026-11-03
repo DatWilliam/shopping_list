@@ -10,13 +10,13 @@ Läuft offline, die Daten bleiben auf dem Gerät.
 - Kacheln mit schwarz-weißen Icons, automatisch nach Supermarkt-Bereichen sortiert
 - Antippen = gekauft (mit Rückgängig), gedrückt halten bzw. Rechtsklick = Menge, Nährwerte, Saison, Tipps
 - „Zuletzt gekauft“ und das ganze Sortiment zum schnellen Nachlegen
-- Reihenfolge der Bereiche unter **Mehr** an deinen Markt anpassen
+- Mehrere Supermärkte mit eigener Reihenfolge der Bereiche (**Mehr → Supermärkte & Reihenfolge**), Wechsel direkt auf der Liste
 
 **Rezepte**
-- Pro Zutat links die Menge als Stück, g oder ml – oder leer lassen (z. B. Salz). Eine ganze Zutatenliste kannst du auch auf einmal einfügen, die Mengen werden dann übernommen
-- kcal, Eiweiß, Kohlenhydrate, Fett und Ballaststoffe werden schon beim Tippen ausgerechnet (pro Portion und gesamt)
-- Portionen umstellen rechnet Mengen und Nährwerte um
-- Zutaten anhaken → „auf die Einkaufsliste“ (Mengen werden zusammengerechnet)
+- Pro Zutat links die Menge in Stück, Gramm oder Milliliter – oder leer lassen (z. B. Salz). Eine ganze Zutatenliste kannst du auch auf einmal einfügen, die Mengen werden dann übernommen
+- Gewürze stehen getrennt von den Zutaten (beim Einfügen automatisch einsortiert)
+- kcal, Eiweiß, Kohlenhydrate, Fett und Ballaststoffe für das ganze Rezept werden schon beim Tippen ausgerechnet, dazu das Gesamtgewicht der Zutaten
+- Zutaten anhaken → „auf die Einkaufsliste“ (Mengen werden zusammengerechnet); „Alle auswählen“ lässt die Gewürze aus
 - Unbekannte Zutaten (z. B. Markenprodukte) kannst du zuordnen oder neu anlegen – Nährwerte gibt es per Online-Suche aus Open Food Facts
 
 ## Am PC starten

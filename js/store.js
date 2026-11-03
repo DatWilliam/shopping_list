@@ -10,24 +10,33 @@ const fresh = () => ({
   recent: [],        // zuletzt gekauft: { f, n?, t }
   customFoods: {},   // eigene Lebensmittel: id → { id, n, c, i, v, p?, src?, custom: true }
   catOverride: {},   // geänderte Kategorie eines Katalog-Lebensmittels
-  catOrder: [...DEFAULT_ORDER],
-  recipes: [],       // { id, title, servings, ings: [{ t, a?, u?, n?, f?, l?, ln? }], steps, notes, created, updated }
+  stores: [],        // Supermärkte: { id, name, order: Kategorie-IDs in Laufreihenfolge }
+  storeId: null,     // ausgewählter Supermarkt
+  recipes: [],       // { id, title, ings: [{ t, a?, u?, n?, sp?: Gewürz, f?, l?, ln? }], steps, notes, created, updated }
   draft: null,       // ungespeicherter Rezept-Entwurf { key, data }
   hintDone: false,
 });
 
+/** Reihenfolge bereinigen: unbekannte Bereiche raus, fehlende hinten anhängen. */
+export const fixOrder = o => [...new Set([...(Array.isArray(o) ? o.filter(id => DEFAULT_ORDER.includes(id)) : []), ...DEFAULT_ORDER])];
+
 function normalize(s) {
-  const out = { ...fresh(), ...(s && typeof s === 'object' ? s : {}) };
+  const src = s && typeof s === 'object' ? s : {};
+  const out = { ...fresh(), ...src };
   for (const k of ['list', 'recent', 'recipes']) if (!Array.isArray(out[k])) out[k] = [];
   for (const k of ['customFoods', 'catOverride']) {
     if (!out[k] || typeof out[k] !== 'object' || Array.isArray(out[k])) out[k] = {};
   }
-  const order = Array.isArray(out.catOrder) ? out.catOrder.filter(id => DEFAULT_ORDER.includes(id)) : [];
-  out.catOrder = [...new Set([...order, ...DEFAULT_ORDER])];
+  // Supermärkte (ältere Versionen hatten nur eine Reihenfolge „catOrder“)
+  let stores = Array.isArray(src.stores) ? src.stores.filter(x => x && x.id && typeof x.name === 'string') : [];
+  if (!stores.length) stores = [{ id: 'standard', name: 'Mein Supermarkt', order: src.catOrder }];
+  out.stores = stores.map(x => ({ ...x, order: fixOrder(x.order) }));
+  if (!out.stores.some(x => x.id === out.storeId)) out.storeId = out.stores[0].id;
+  delete out.catOrder;
   out.list = out.list.filter(i => i && i.id && i.f);
   out.recipes = out.recipes
     .filter(r => r && r.id && typeof r.title === 'string')
-    .map(r => ({ servings: 1, steps: '', notes: '', ...r, ings: Array.isArray(r.ings) ? r.ings.filter(g => g && typeof g.t === 'string') : [] }));
+    .map(r => ({ steps: '', notes: '', ...r, ings: Array.isArray(r.ings) ? r.ings.filter(g => g && typeof g.t === 'string') : [] }));
   return out;
 }
 
@@ -38,10 +47,11 @@ function load() {
   } catch (e) {
     console.warn('Gespeicherte Daten konnten nicht gelesen werden', e);
   }
-  return fresh();
+  return normalize(fresh());
 }
 
 export const state = load();
+export const activeStore = () => state.stores.find(x => x.id === state.storeId) || state.stores[0];
 
 let timer = null;
 export function save() {

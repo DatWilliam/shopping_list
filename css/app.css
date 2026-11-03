@@ -346,7 +346,6 @@ body.sheet-open .backdrop { opacity: 1; }
 .field input:focus, .field select:focus, .field textarea:focus, .off-box input:focus, .ing-input:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.serv-field { width: 7.5rem; flex: none; }
 
 /* ---------- Karten ---------- */
 .card {
@@ -371,13 +370,6 @@ body.sheet-open .backdrop { opacity: 1; }
 
 /* ---------- Rezept ---------- */
 .recipe-title { font-size: 1.75rem; font-weight: 770; letter-spacing: -.015em; margin-top: 4px; }
-.servings {
-  display: flex; align-items: center; justify-content: space-between; margin-top: 16px;
-  padding: 6px 6px 6px 16px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--line);
-  font-weight: 620;
-}
-.stepper { display: flex; align-items: center; gap: 4px; }
-.stepper b { min-width: 2ch; text-align: center; font-size: 1.15rem; }
 
 .nutri-card { margin-top: 12px; padding: 16px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
 .nutri-main { display: flex; align-items: baseline; gap: 8px; }
@@ -436,7 +428,8 @@ body.sheet-open .backdrop { opacity: 1; }
 
 /* ---------- Rezept-Editor ---------- */
 .ed-ings { display: flex; flex-direction: column; gap: 6px; }
-.ed-ings + p { margin-top: 12px; }
+.add-row { margin-top: 8px; }
+.ed-hint { margin-top: 14px; }
 .ing-row { display: grid; grid-template-columns: 3.9rem 4.1rem minmax(0, 1fr) auto; align-items: center; gap: 0 5px; }
 .ing-amt, .ing-unit, .ing-input {
   width: 100%; min-width: 0; padding: 11px 12px; border-radius: 12px;
@@ -444,14 +437,17 @@ body.sheet-open .backdrop { opacity: 1; }
 }
 .ing-amt { padding-inline: 4px; text-align: center; }
 .ing-amt::placeholder { font-size: .8rem; }
+/* Einheit: sichtbar ist die Abkürzung, darüber liegt unsichtbar das Auswahlmenü mit den vollen Namen */
 .ing-unit {
-  appearance: none; -webkit-appearance: none; padding: 11px 18px 11px 9px; cursor: pointer;
+  position: relative; display: flex; align-items: center; padding: 11px 18px 11px 9px; cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238f9993' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 7px center; background-size: 9px;
 }
+.ing-unit-txt { line-height: 1.15; white-space: nowrap; overflow: hidden; }
+.ing-unit select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 1rem; border: 0; }
 /* ohne Menge ist die Einheit egal → blass */
 .ing-row:has(.ing-amt:placeholder-shown) .ing-unit { color: var(--muted); }
-.ing-amt:focus, .ing-unit:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ing-amt:focus, .ing-unit:focus-within { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .ing-prev { grid-column: 1 / -1; }
 .ing-prev:empty { display: none; }
 .prev {
@@ -470,3 +466,34 @@ body.sheet-open .backdrop { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* ---------- Rezept: Gewürze ---------- */
+.sub-head { margin: 18px 0 0; font-size: .78rem; font-weight: 720; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+/* ---------- Supermärkte ---------- */
+.top .bar-spacer { width: 44px; flex: none; }
+.nav-card { display: flex; align-items: center; gap: 14px; color: inherit; text-decoration: none; }
+.nav-card b { display: block; font-size: 1.02rem; }
+.nav-card small { display: block; margin-top: 2px; color: var(--muted); font-size: .84rem; }
+.nav-card > .ui { color: var(--muted); flex: none; }
+.nav-ico { display: grid; place-items: center; width: 42px; height: 42px; flex: none; border-radius: 12px; background: var(--accent-soft); color: var(--accent-strong); }
+.store-list { padding-block: 4px; }
+.card.store-list { padding-inline: 8px; }
+.store-row { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
+.store-row:last-child { border-bottom: 0; }
+.store-pick { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; padding: 12px 8px; border: 0; background: transparent; text-align: left; border-radius: 12px; }
+.store-pick:hover { background: var(--surface-2); }
+.store-pick b { display: block; font-weight: 650; overflow-wrap: anywhere; }
+.store-pick small { display: block; color: var(--muted); font-size: .8rem; margin-top: 1px; }
+.store-row.on small { color: var(--accent-strong); font-weight: 600; }
+.radio { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 2px solid var(--muted); }
+.store-row.on .radio { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 5px, transparent 6px); }
+.store-state { display: flex; align-items: center; gap: 8px; color: var(--accent-strong); font-weight: 600; font-size: .92rem; }
+.store-state .ui { width: 18px; height: 18px; flex: none; }
+.store-chip {
+  margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 6px; max-width: 55%;
+  padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+  font-size: .84rem; font-weight: 600; color: var(--ink-2);
+}
+.store-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-chip .ui { width: 16px; height: 16px; flex: none; }
