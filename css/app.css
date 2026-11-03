@@ -312,6 +312,8 @@ body.sheet-open .backdrop { opacity: 1; }
 .pill.ok { background: var(--accent-soft); color: var(--accent-strong); }
 .pill.kcal { color: var(--c-kcal); }
 .pill.prot { color: var(--c-prot); }
+.pill.time { color: var(--c-fib); }
+.pill .ui { width: 14px; height: 14px; margin-right: 4px; stroke-width: 2.4; }
 
 .off-box { margin-top: 14px; padding: 14px; border-radius: var(--r); border: 1.5px dashed var(--line); }
 .off-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: .92rem; margin-bottom: 10px; }
@@ -568,3 +570,21 @@ body[data-view="cook"] .timers:not(:empty) { display: flex; }
 .timer.rang { background: var(--danger-soft); animation: ring-pulse 1s ease-in-out infinite; }
 .timer.rang > .ui, .timer.rang .tm-left { color: var(--danger); }
 @keyframes ring-pulse { 50% { background: transparent; } }
+
+/* ---------- Inspiration ---------- */
+body[data-view="recipes"] #view { padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 96px); }
+.insp-btn {
+  display: flex; align-items: center; gap: 14px; margin-top: 18px; padding: 14px 16px;
+  border-radius: var(--r); border: 1.5px dashed var(--line); color: inherit; text-decoration: none;
+}
+.insp-btn:hover { background: var(--surface); }
+.insp-btn b { display: block; font-size: 1rem; }
+.insp-btn small { display: block; margin-top: 2px; color: var(--muted); font-size: .84rem; }
+.insp-btn > .ui { color: var(--muted); }
+.insp-ico { display: grid; place-items: center; width: 42px; height: 42px; flex: none; border-radius: 12px; background: var(--warn-soft); color: var(--c-carb); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 14px; }
+.chip { padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .86rem; font-weight: 600; color: var(--ink-2); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.idea-count { margin: 14px 0 2px; }
+.idea-tags { margin-top: 10px; }
+#idea-view .ing { cursor: default; }

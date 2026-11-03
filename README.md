@@ -13,12 +13,13 @@ Läuft offline, die Daten bleiben auf dem Gerät.
 - Mehrere Supermärkte mit eigener Reihenfolge der Bereiche (**Mehr → Supermärkte & Reihenfolge**), Wechsel direkt auf der Liste
 
 **Rezepte**
-- Pro Zutat erst der Name, dahinter die Menge in Stück, Gramm oder Milliliter – oder leer lassen (z. B. Salz). Eine ganze Zutatenliste kannst du auch auf einmal einfügen, die Mengen werden dann übernommen
+- Pro Zutat erst der Name, dahinter die Menge in Stück, Gramm, Milliliter, EL oder TL – oder leer lassen (z. B. Salz). Eine ganze Zutatenliste kannst du auch auf einmal einfügen, die Mengen werden dann übernommen
 - Gewürze stehen getrennt von den Zutaten (beim Einfügen automatisch einsortiert)
 - kcal, Eiweiß, Kohlenhydrate, Fett und Ballaststoffe für das ganze Rezept werden schon beim Tippen ausgerechnet, dazu das Gesamtgewicht der Zutaten
 - Zutaten anhaken → „auf die Einkaufsliste“ (Mengen werden zusammengerechnet); „Alle auswählen“ lässt die Gewürze aus
 - Optional Arbeitszeit und Kochzeit pro Rezept
 - **Kochmodus**: Bildschirm bleibt an, große Schrift, Zutaten und Schritte abhaken. Zeiten in den Schritten („10 min“, „1 Std.“) und die Kochzeit lassen sich als Timer starten – sie piepen und vibrieren, solange die App offen ist, und laufen nach dem Schließen weiter
+- **Inspiration holen** (unter der Rezeptliste): 100 Alltagsgerichte mit Filtern (schnell, vegetarisch, viel Eiweiß …) und „Überrasch mich“ – mit einem Tipp in die eigenen Rezepte übernehmen oder die Zutaten direkt auf die Einkaufsliste setzen
 - Unbekannte Zutaten (z. B. Markenprodukte) kannst du zuordnen oder neu anlegen – Nährwerte gibt es per Online-Suche aus Open Food Facts
 
 ## Am PC starten
@@ -57,6 +58,7 @@ Alles wird im Browser des jeweiligen Geräts gespeichert (localStorage). Handy u
 | Was | Wo |
 |---|---|
 | Lebensmittel, Nährwerte, Tipps, Saison | `js/foods.js` (Format steht oben in der Datei) |
+| Rezeptideen für „Inspiration holen“ | `js/inspiration.js` (Format steht oben in der Datei) |
 | Einheiten (EL, Dose, Bund …) | `js/ingredients.js` → `UNITS` |
 | Farben & Aussehen | `css/app.css` (oben die Farbvariablen, hell und dunkel) |
 | Farbe der Android-Leiste unten (installierte App) | `manifest.webmanifest` → `theme_color` |
@@ -76,6 +78,7 @@ js/foods.js            Lebensmittel-Katalog mit Nährwerten
 js/ingredients.js      Zutaten verstehen, Gramm & Nährwerte berechnen
 js/store.js            Speichern, Backup
 js/off.js              Online-Suche bei Open Food Facts
+js/inspiration.js      100 Rezeptideen (wird erst beim Öffnen geladen)
 icons/                 App-Icon und Icon-Sprite (OpenMoji)
 tools/build_icons.py   baut icons/sprite.svg
 main.py                lokaler Server zum Starten am PC

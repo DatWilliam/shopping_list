@@ -4,7 +4,7 @@ import * as I from './ingredients.js';
 import { state, save, flush, uid, exportJSON, parseBackup, applyBackup, DEFAULT_ORDER, activeStore } from './store.js';
 import { searchOFF } from './off.js';
 
-const VERSION = '1.4';
+const VERSION = '1.6';
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const cap = s => { s = String(s || '').trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
@@ -33,6 +33,7 @@ const UI = {
   tag: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
   leaf: '<path d="M11 20A7 7 0 0 1 4 13c0-5 4-9 16-10-1 12-5 17-9 17z"/><path d="M4 21c4-4 7-7 11-11"/>',
   bulb: '<path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V16h8v-1.3A7 7 0 0 0 12 2z"/>',
+  dice: '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/>',
   timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2h5M12 2v3"/>',
   pot: '<path d="M5 11h14v5a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4v-5z"/><path d="M3 11h18"/><path d="M9.5 7.5c0-1.5 1-1.5 1-3M13.5 7.5c0-1.5 1-1.5 1-3"/>',
   store: '<path d="M4 10v10h16V10"/><path d="M3 4h18l-1.2 5.2a2.4 2.4 0 0 1-4.6.3 2.6 2.6 0 0 1-5 0 2.4 2.4 0 0 1-4.6-.3L3 4z"/><path d="M10 20v-5h4v5"/>',
@@ -452,6 +453,7 @@ const fmtWeight = g => (g >= 1000 ? `${(Math.round(g / 100) / 10).toLocaleString
 const minutes = v => { const n = Math.round(+String(v ?? '').replace(',', '.')); return n > 0 ? Math.min(n, 2880) : 0; };
 const totalMin = r => minutes(r.prepMin) + minutes(r.cookMin);
 const fmtMin = m => (m >= 60 ? `${Math.floor(m / 60)} Std${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`);
+const timePill = m => (m ? `<span class="pill time">${ui('timer')}${fmtMin(m)}</span>` : '');
 function timesHtml(r) {
   const p = minutes(r.prepMin), k = minutes(r.cookMin);
   if (!p && !k) return '';
@@ -470,6 +472,9 @@ function renderRecipes() {
     ${state.recipes.length ? `<div class="search">${ui('search')}<input id="recipe-search" type="search" placeholder="Rezept oder Zutat suchen" autocomplete="off" aria-label="Rezepte durchsuchen"></div>` : ''}
   </header>
   <div id="recipe-list" class="pad">${recipeListHtml('')}</div>
+  <div class="pad"><a class="insp-btn" href="#/inspiration">
+    <span class="insp-ico">${ui('bulb')}</span>
+    <span class="grow"><b>Inspiration holen</b><small>100 Rezeptideen zum Übernehmen</small></span>${ui('next')}</a></div>
   ${state.recipes.length ? `<a class="fab" href="#/rezept/neu">${ui('plus')}<span>Neues Rezept</span></a>` : ''}`;
 }
 
@@ -488,8 +493,8 @@ function recipeListHtml(q) {
     const c = computeRecipe(r);
     return `<a class="card recipe-card" href="#/rezept/${r.id}">
       <div class="rc-title">${esc(r.title)}</div>
-      <div class="rc-meta">${c.count} Zutaten${c.grams ? ` · ≈ ${fmtWeight(c.grams)}` : ''}${totalMin(r) ? ` · ${fmtMin(totalMin(r))}` : ''}${c.issues ? ` · <span class="warn-text">${c.issues} ohne Werte</span>` : ''}</div>
-      <div class="pills"><span class="pill kcal">${fmtInt(c.total[0])} kcal</span><span class="pill prot">${fmtG(c.total[1])} g Eiweiß</span></div>
+      <div class="rc-meta">${c.count} ${c.count === 1 ? 'Zutat' : 'Zutaten'}${c.grams ? ` · ≈ ${fmtWeight(c.grams)}` : ''}${c.issues ? ` · <span class="warn-text">${c.issues} ohne Werte</span>` : ''}</div>
+      <div class="pills">${timePill(totalMin(r))}<span class="pill kcal">${fmtInt(c.total[0])} kcal</span><span class="pill prot">${fmtG(c.total[1])} g Eiweiß</span></div>
     </a>`;
   }).join('');
 }
@@ -586,6 +591,127 @@ function updateCta() {
   const n = D.sel.size;
   cta.hidden = !n;
   cta.firstElementChild.innerHTML = `${ui('bag')} ${n} ${n === 1 ? 'Zutat' : 'Zutaten'} auf die Einkaufsliste`;
+}
+
+// ---------- Inspiration (Rezeptideen) ----------
+// Die 100 Ideen stehen in js/inspiration.js und werden erst beim Öffnen geladen.
+let IDEAS = null;
+const ideaUi = { filters: new Set(), q: '' };
+const IDEA_FILTERS = [
+  ['schnell', 'Schnell'], ['veg', 'Vegetarisch'], ['eiweiss', 'Viel Eiweiß'], ['wenig', 'Wenige Zutaten'],
+  ['ofen', 'Aus dem Ofen'], ['suppe', 'Suppen & Eintöpfe'], ['salat', 'Salate & Bowls'], ['fruehstueck', 'Frühstück'], ['suess', 'Süßes'],
+];
+const IDEA_FLAG_TAGS = { v: 'veg', s: 'suppe', l: 'salat', f: 'fruehstueck', z: 'suess' };
+
+async function loadIdeas() {
+  if (IDEAS) return IDEAS;
+  const { IDEAS: raw } = await import('./inspiration.js');
+  IDEAS = raw.map(x => {
+    const r = {
+      id: x.id, title: x.title, prepMin: x.prep, cookMin: x.cook,
+      ings: [...x.ings.map(t => ({ t, sp: false })), ...x.spices.map(t => ({ t, sp: true }))],
+      steps: x.steps.join('\n'),
+    };
+    const c = computeRecipe(r);
+    const tags = new Set([...x.flags].map(f => IDEA_FLAG_TAGS[f]).filter(Boolean));
+    if (x.prep + x.cook <= 30) tags.add('schnell');
+    if (c.total[1] >= 50 && c.total[1] * 4 >= c.total[0] * 0.25) tags.add('eiweiss'); // ≥ 25 g pro Person, ≥ 25 % der Kalorien
+    if (x.ings.length <= 5) tags.add('wenig');
+    if (x.steps.some(s => /Ofen/.test(s))) tags.add('ofen');
+    return { ...r, tags, c, key: I.compact([x.title, ...x.ings].join(' ')) };
+  });
+  return IDEAS;
+}
+const ideaTaken = id => state.recipes.find(r => r.src === 'idee:' + id);
+const filteredIdeas = () => {
+  const k = I.compact(ideaUi.q);
+  return IDEAS.filter(x => [...ideaUi.filters].every(f => x.tags.has(f)) && (!k || x.key.includes(k)));
+};
+
+async function renderIdeas() {
+  view.innerHTML = `
+  <header class="top bar">
+    <a class="icon-btn" href="#/rezepte" data-act="back" aria-label="Zurück">${ui('back')}</a>
+    <h1 class="bar-title">Inspiration</h1>
+    <span class="bar-spacer"></span>
+  </header>
+  <div class="pad">
+    <div class="search">${ui('search')}<input id="idea-search" type="search" value="${esc(ideaUi.q)}" placeholder="Gericht oder Zutat suchen" autocomplete="off" aria-label="Rezeptideen durchsuchen"></div>
+    <div class="chips" role="group" aria-label="Filter">${IDEA_FILTERS.map(([k, l]) => `<button type="button" class="chip${ideaUi.filters.has(k) ? ' on' : ''}" data-act="idea-filter" data-f="${k}" aria-pressed="${ideaUi.filters.has(k)}">${l}</button>`).join('')}</div>
+    <button type="button" class="btn block" data-act="idea-random">${ui('dice')} Überrasch mich</button>
+    <p class="muted small idea-count" id="idea-count"></p>
+    <div id="idea-list"><p class="muted center">Lade Rezeptideen …</p></div>
+  </div>`;
+  await loadIdeas();
+  if (currentView === 'ideas') drawIdeas();
+}
+
+function drawIdeas() {
+  const box = $('#idea-list');
+  if (!box || !IDEAS) return;
+  const list = filteredIdeas();
+  $('#idea-count').textContent = `${list.length} ${list.length === 1 ? 'Rezept' : 'Rezepte'} · Mengen für 2 Personen`;
+  box.innerHTML = list.length ? list.map(x => {
+    const min = x.prepMin + x.cookMin;
+    return `<a class="card recipe-card" href="#/idee/${x.id}">
+      <div class="rc-title">${esc(x.title)}${ideaTaken(x.id) ? ' <span class="badge">übernommen</span>' : ''}</div>
+      <div class="rc-meta">${x.ings.filter(g => !g.sp).length} Zutaten${x.tags.has('veg') ? ' · vegetarisch' : ''}</div>
+      <div class="pills">${timePill(min)}<span class="pill kcal">${fmtInt(x.c.total[0])} kcal</span><span class="pill prot">${fmtG(x.c.total[1])} g Eiweiß</span></div>
+    </a>`;
+  }).join('') : `<p class="muted center">Nichts gefunden – nimm einen Filter weg.</p>`;
+}
+
+async function renderIdea(id) {
+  view.innerHTML = `
+  <header class="top bar">
+    <a class="icon-btn" href="#/inspiration" data-act="back" aria-label="Zurück">${ui('back')}</a>
+    <div class="grow"></div>
+    <button type="button" class="btn small" data-act="idea-random">${ui('dice')} Andere Idee</button>
+  </header>
+  <article class="pad recipe" id="idea-view"><p class="muted center">Lade …</p></article>`;
+  await loadIdeas();
+  if (currentView !== 'idea') return;
+  const x = IDEAS.find(i => i.id === id);
+  if (!x) { location.replace('#/inspiration'); return; }
+  const taken = ideaTaken(id);
+  const tagNames = IDEA_FILTERS.filter(([k]) => x.tags.has(k)).map(([, l]) => l);
+  const li = i => {
+    const a = x.c.rows[i];
+    return `<li><div class="ing">${icon(a.food || { n: a.p.name }, 'ico sm')}<span class="ing-text">${esc(x.ings[i].t)}</span>
+      <span class="ing-kcal">${a.status === 'ok' ? fmtInt(a.nutr[0]) + ' kcal' : ''}</span></div></li>`;
+  };
+  const idx = x.ings.map((g, i) => i);
+  const main = idx.filter(i => !x.ings[i].sp), spices = idx.filter(i => x.ings[i].sp);
+  $('#idea-view').innerHTML = `
+    <p class="muted small">Rezeptidee · für 2 Personen</p>
+    <h1 class="recipe-title">${esc(x.title)}</h1>
+    ${timesHtml(x)}
+    ${tagNames.length ? `<div class="pills idea-tags">${tagNames.map(t => `<span class="pill">${t}</span>`).join('')}</div>` : ''}
+    ${taken ? `<a class="btn block cook-start" href="#/rezept/${taken.id}">${ui('check')} Schon in deinen Rezepten – öffnen</a>`
+      : `<button type="button" class="btn primary block cook-start" data-act="idea-import" data-id="${x.id}">${ui('plus')} In meine Rezepte übernehmen</button>`}
+    ${nutriCardHtml(x.c)}
+    <section class="block">
+      <div class="section-head"><h2>Zutaten</h2><button type="button" class="link" data-act="idea-shop" data-id="${x.id}">Auf die Einkaufsliste</button></div>
+      <ul class="ing-list">${main.map(li).join('')}</ul>
+      ${spices.length ? `<h3 class="sub-head">Gewürze</h3><ul class="ing-list">${spices.map(li).join('')}</ul>` : ''}
+    </section>
+    <section class="block"><h2>Zubereitung</h2><ol class="steps">${splitSteps(x.steps).map(s => `<li>${esc(s)}</li>`).join('')}</ol></section>`;
+}
+
+/** Idee als eigenes, frei bearbeitbares Rezept speichern. */
+function importIdea(x) {
+  const rec = {
+    id: uid(), title: x.title,
+    ...(x.prepMin ? { prepMin: x.prepMin } : {}), ...(x.cookMin ? { cookMin: x.cookMin } : {}),
+    ings: x.ings.map(g => { const s = I.splitIng(g.t); return { ...s, t: I.joinIng(s), sp: g.sp }; }),
+    steps: x.steps,
+    notes: 'Mengen für 2 Personen.',
+    src: 'idee:' + x.id,
+    created: Date.now(), updated: Date.now(),
+  };
+  state.recipes.push(rec);
+  save();
+  return rec;
 }
 
 // ---------- Kochmodus ----------
@@ -778,10 +904,15 @@ function drawTimers() {
 
 // ---------- Rezept bearbeiten ----------
 let E = null; // { id, key, draft, dirty }
-// Editor-Zeile: t = Zeile für Parser & Anzeige, a/u/n = Menge, Einheit (stk|g|ml), Zutat, sp = Gewürz
+// Editor-Zeile: t = Zeile für Parser & Anzeige, a/u/n = Menge, Einheit (stk|g|ml|el|tl), Zutat, sp = Gewürz
 const blankIng = sp => ({ t: '', a: '', u: 'stk', n: '', sp });
 function editIng(g) {
-  const r = g.n != null ? { a: '', u: 'stk', ...g } : { ...g, ...I.splitIng(g.t) };
+  let r = g.n != null ? { a: '', u: 'stk', ...g } : { ...g, ...I.splitIng(g.t) };
+  // Zeilen, deren Menge noch im Namen steht („2 EL Öl“ von früher), auf die Felder verteilen
+  if (!String(r.a).trim()) {
+    const s = I.splitIng(r.n);
+    if (s.a) { r = { ...r, ...s }; r.t = I.joinIng(r); }
+  }
   r.sp ??= autoSpice(r);
   return r;
 }
@@ -820,7 +951,7 @@ function renderEditor(id) {
     <div class="section-head"><h2>Gewürze</h2><span class="muted small">hast du meistens da</span></div>
     <div id="ed-sp" class="ed-ings"></div>
     <button type="button" class="btn ghost small add-row" data-act="ing-add" data-sp="1">${ui('plus')} Gewürz</button>
-    <p class="muted small ed-hint">Menge in Stück, Gramm oder Milliliter – oder leer lassen. Eine ganze Zutatenliste kannst du auch auf einmal ins Zutatenfeld einfügen, Gewürze werden dabei automatisch einsortiert. Zwischenüberschriften enden mit „:“.</p>
+    <p class="muted small ed-hint">Menge in Stück, Gramm, Milliliter, EL oder TL – oder leer lassen. Eine ganze Zutatenliste kannst du auch auf einmal ins Zutatenfeld einfügen, Gewürze werden dabei automatisch einsortiert. Zwischenüberschriften enden mit „:“.</p>
     <div id="ed-nutri"></div>
     <label class="field"><span>Zubereitung</span><textarea data-ed="steps" rows="8" placeholder="Ein Schritt pro Zeile">${esc(draft.steps)}</textarea></label>
     <label class="field"><span>Notizen</span><textarea data-ed="notes" rows="3" placeholder="Tipps, Varianten …">${esc(draft.notes)}</textarea></label>
@@ -831,7 +962,7 @@ function renderEditor(id) {
 }
 
 // Im Auswahlmenü stehen die vollen Namen, im Feld die Abkürzung
-const UNIT_OPTS = [['stk', 'Stk', 'Stück'], ['g', 'g', 'Gramm'], ['ml', 'ml', 'Milliliter']];
+const UNIT_OPTS = [['stk', 'Stk', 'Stück'], ['g', 'g', 'Gramm'], ['ml', 'ml', 'Milliliter'], ['el', 'EL', 'Esslöffel'], ['tl', 'TL', 'Teelöffel']];
 const unitShort = u => (UNIT_OPTS.find(o => o[0] === u) || UNIT_OPTS[0])[1];
 
 function ingRowHtml(g, i, first) {
@@ -1296,6 +1427,44 @@ const A = {
     toast(`„${r.title}“ gelöscht`, { action: 'Rückgängig', onAction: () => { state.recipes.splice(idx, 0, r); save(); location.hash = '#/rezept/' + r.id; } });
   },
 
+  // ---- Inspiration ----
+  'idea-filter': el => {
+    const f = el.dataset.f;
+    if (ideaUi.filters.has(f)) ideaUi.filters.delete(f); else ideaUi.filters.add(f);
+    el.classList.toggle('on', ideaUi.filters.has(f));
+    el.setAttribute('aria-pressed', ideaUi.filters.has(f));
+    drawIdeas();
+  },
+  'idea-random': async () => {
+    await loadIdeas();
+    const current = location.hash.split('/')[2];
+    let pool = filteredIdeas().filter(x => x.id !== current);
+    if (!pool.length) pool = IDEAS.filter(x => x.id !== current);
+    const x = pool[Math.floor(Math.random() * pool.length)];
+    if (currentView === 'idea') location.replace('#/idee/' + x.id); else location.hash = '#/idee/' + x.id;
+  },
+  'idea-import': el => {
+    const x = IDEAS?.find(i => i.id === el.dataset.id);
+    if (!x || ideaTaken(x.id)) return;
+    const rec = importIdea(x);
+    location.hash = '#/rezept/' + rec.id;
+    toast('In deine Rezepte übernommen – du kannst es jetzt anpassen.');
+  },
+  // Zutaten ohne Gewürze direkt auf die Liste
+  'idea-shop': el => {
+    const x = IDEAS?.find(i => i.id === el.dataset.id);
+    if (!x) return;
+    let n = 0;
+    x.c.rows.forEach((a, i) => {
+      if (x.ings[i].sp || !selectableRow(a)) return;
+      const foodId = a.food ? a.food.id : ensureCustomFood(a.p.name || x.ings[i].t);
+      if (!foodId) return;
+      addFood(foodId, a.food?.z ? '' : I.specFromParsed(a.p), { recipe: x.title, quiet: true });
+      n++;
+    });
+    toast(`${n} Zutaten auf der Einkaufsliste (ohne Gewürze)`, { action: 'Zur Liste', onAction: () => { location.hash = '#/liste'; } });
+  },
+
   // ---- Kochmodus ----
   'cook-step': el => {
     const ck = state.cook, i = +el.dataset.i;
@@ -1361,6 +1530,7 @@ const A = {
       })),
       steps: (d.steps || '').trim(),
       notes: (d.notes || '').trim(),
+      ...(old?.src ? { src: old.src } : {}),
       created: old?.created || Date.now(),
       updated: Date.now(),
     };
@@ -1524,6 +1694,7 @@ document.addEventListener('input', e => {
   else if (t.dataset.ed) onEdField(t);
   else if (t.id === 'fp-q') drawPicker(t.value);
   else if (t.id === 'store-name') { const s = storeById(t.dataset.store); if (s) { s.name = t.value.trim() || 'Supermarkt'; save(); } }
+  else if (t.id === 'idea-search') { ideaUi.q = t.value; drawIdeas(); }
 });
 document.addEventListener('change', e => {
   const t = e.target;
@@ -1568,6 +1739,8 @@ function route() {
   else if (h === '#/rezept/neu') { currentView = 'editor'; tab = 'rezepte'; renderEditor(null); }
   else if ((m = h.match(/^#\/rezept\/([\w-]+)\/bearbeiten$/))) { currentView = 'editor'; tab = 'rezepte'; renderEditor(m[1]); }
   else if ((m = h.match(/^#\/rezept\/([\w-]+)\/kochen$/))) { currentView = 'cook'; tab = 'rezepte'; renderCook(m[1]); }
+  else if (h === '#/inspiration') { currentView = 'ideas'; tab = 'rezepte'; renderIdeas(); }
+  else if ((m = h.match(/^#\/idee\/([\w-]+)$/))) { currentView = 'idea'; tab = 'rezepte'; renderIdea(m[1]); }
   else if ((m = h.match(/^#\/rezept\/([\w-]+)$/))) { currentView = 'recipe'; tab = 'rezepte'; renderRecipe(m[1]); }
   else if (h === '#/einstellungen') { currentView = 'settings'; tab = 'einstellungen'; renderSettings(); }
   else if (h === '#/maerkte') { currentView = 'stores'; tab = 'einstellungen'; renderStores(); }

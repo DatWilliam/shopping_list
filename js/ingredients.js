@@ -176,13 +176,14 @@ export function parseLine(raw) {
 }
 
 // ---------- Editor: Menge | Einheit | Zutat ----------
-const EDIT_UNITS = { g: ['g', 1], kg: ['g', 1000], ml: ['ml', 1], cl: ['ml', 10], dl: ['ml', 100], l: ['ml', 1000] };
+const EDIT_UNITS = { g: ['g', 1], kg: ['g', 1000], ml: ['ml', 1], cl: ['ml', 10], dl: ['ml', 100], l: ['ml', 1000], el: ['el', 1], tl: ['tl', 1] };
+const UNIT_TEXT = { g: 'g', ml: 'ml', el: 'EL', tl: 'TL' };
 const numText = n => String(Math.round(n * 100) / 100).replace('.', ',');
 
 /**
- * Zerlegt eine Zeile für die Eingabefelder des Editors: { a: Menge, u: 'stk'|'g'|'ml', n: Zutat }.
+ * Zerlegt eine Zeile für die Eingabefelder des Editors: { a: Menge, u: 'stk'|'g'|'ml'|'el'|'tl', n: Zutat }.
  * „200 g Hack“ → 200 | g | Hack, „1 kg Mehl“ → 1000 | g | Mehl, „2 große Zwiebeln“ → 2 | stk | große Zwiebeln.
- * Andere Einheiten („2 EL Öl“) bleiben komplett im Namen stehen – der Parser versteht sie trotzdem.
+ * Andere Einheiten („1 Dose Tomaten“) bleiben komplett im Namen stehen – der Parser versteht sie trotzdem.
  */
 export function splitIng(text) {
   const t = String(text ?? '').replace(/\s+/g, ' ').trim();
@@ -220,7 +221,7 @@ function splitTrailing(s) {
   if (!m[3]) return qty < 100 ? { a: amount, u: 'stk', n } : null;
   if (unit === 'stk') return { a: amount, u: 'stk', n };
   const conv = unit && EDIT_UNITS[unit];
-  if (!conv) return null; // „Öl 2 EL“: so lassen, der Parser versteht es trotzdem
+  if (!conv) return null; // „Tomaten 1 Dose“: so lassen, der Parser versteht es trotzdem
   const [u, mul] = conv;
   return { a: mul === 1 ? amount : numText(qty * mul) + (qty2 != null ? '-' + numText(qty2 * mul) : ''), u, n };
 }
@@ -230,7 +231,7 @@ export function joinIng(g) {
   const a = String(g?.a ?? '').trim();
   const n = String(g?.n ?? '').trim();
   if (!a) return n;
-  return [a, g.u === 'g' || g.u === 'ml' ? g.u : '', n].filter(Boolean).join(' ');
+  return [a, UNIT_TEXT[g.u] || '', n].filter(Boolean).join(' ');
 }
 
 // Packung bewusst nicht: „2 Gouda“ sind nicht zwangsläufig zwei Packungen

@@ -1,6 +1,6 @@
 // Service Worker: hält die App offline verfügbar (z. B. im Supermarkt ohne Empfang).
 // Nach jeder Änderung an der App die Versionsnummer erhöhen, damit Handys das Update laden.
-const CACHE = 'kuechenzettel-v5';
+const CACHE = 'kuechenzettel-v7';
 const ASSETS = [
   './',
   'index.html',
@@ -11,6 +11,7 @@ const ASSETS = [
   'js/ingredients.js',
   'js/store.js',
   'js/off.js',
+  'js/inspiration.js',
   'icons/sprite.svg',
   'icons/app.svg',
   'icons/app-192.png',
