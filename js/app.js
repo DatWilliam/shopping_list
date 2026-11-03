@@ -4,7 +4,7 @@ import * as I from './ingredients.js';
 import { state, save, flush, uid, exportJSON, parseBackup, applyBackup, DEFAULT_ORDER, activeStore } from './store.js';
 import { searchOFF } from './off.js';
 
-const VERSION = '1.7';
+const VERSION = '1.8';
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const cap = s => { s = String(s || '').trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
@@ -465,6 +465,11 @@ function timesHtml(r) {
 // Gewürze stehen im Rezept getrennt (hat man meistens da). sp = true/false; fehlt es (alte Rezepte), nach Kategorie raten.
 const autoSpice = g => { const f = I.analyze(g, ctx).food; return !!f && catOf(f) === 'gewuerze'; };
 const isSpice = g => g.sp ?? autoSpice(g);
+// Anzahl auf den Karten: nur Zutaten, ohne Gewürze und Zwischenüberschriften
+function ingCountText(r, c) {
+  const n = r.ings.filter((g, i) => !isSpice(g) && c.rows[i].status !== 'header' && c.rows[i].status !== 'empty').length;
+  return `${n} ${n === 1 ? 'Zutat' : 'Zutaten'}`;
+}
 
 function renderRecipes() {
   view.innerHTML = `
@@ -494,7 +499,7 @@ function recipeListHtml(q) {
     const c = computeRecipe(r);
     return `<a class="card recipe-card" href="#/rezept/${r.id}">
       <div class="rc-title">${esc(r.title)}</div>
-      <div class="rc-meta">${c.count} ${c.count === 1 ? 'Zutat' : 'Zutaten'}${c.grams ? ` · ≈ ${fmtWeight(c.grams)}` : ''}${c.issues ? ` · <span class="warn-text">${c.issues} ohne Werte</span>` : ''}</div>
+      <div class="rc-meta">${ingCountText(r, c)}${c.grams ? ` · ≈ ${fmtWeight(c.grams)}` : ''}${c.issues ? ` · <span class="warn-text">${c.issues} ohne Werte</span>` : ''}</div>
       <div class="pills">${timePill(totalMin(r))}<span class="pill kcal">${fmtInt(c.total[0])} kcal</span><span class="pill prot">${fmtG(c.total[1])} g Eiweiß</span></div>
     </a>`;
   }).join('');
@@ -656,7 +661,7 @@ function drawIdeas() {
     const min = x.prepMin + x.cookMin;
     return `<a class="card recipe-card" href="#/idee/${x.id}">
       <div class="rc-title">${esc(x.title)}${ideaTaken(x.id) ? ' <span class="badge">übernommen</span>' : ''}</div>
-      <div class="rc-meta">${x.ings.filter(g => !g.sp).length} Zutaten${x.tags.has('veg') ? ' · vegetarisch' : ''}</div>
+      <div class="rc-meta">${ingCountText(x, x.c)}${x.tags.has('veg') ? ' · vegetarisch' : ''}</div>
       <div class="pills">${timePill(min)}<span class="pill kcal">${fmtInt(x.c.total[0])} kcal</span><span class="pill prot">${fmtG(x.c.total[1])} g Eiweiß</span></div>
     </a>`;
   }).join('') : `<p class="muted center">Nichts gefunden – nimm einen Filter weg.</p>`;
