@@ -512,6 +512,7 @@ body.sheet-open .backdrop { opacity: 1; }
 .time-chip { padding: 4px 10px; border-radius: 999px; background: var(--surface-2); font-size: .84rem; color: var(--ink-2); }
 .time-chip b { color: var(--ink); font-weight: 680; }
 .cook-start { margin-top: 14px; }
+.block + .cook-start { margin-top: 22px; }
 
 /* ---------- Kochmodus ---------- */
 body[data-view="cook"] .tabbar { display: none; }

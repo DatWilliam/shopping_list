@@ -4,7 +4,7 @@ import * as I from './ingredients.js';
 import { state, save, flush, uid, exportJSON, parseBackup, applyBackup, DEFAULT_ORDER, activeStore } from './store.js';
 import { searchOFF } from './off.js';
 
-const VERSION = '1.6';
+const VERSION = '1.7';
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const cap = s => { s = String(s || '').trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
@@ -458,7 +458,8 @@ function timesHtml(r) {
   const p = minutes(r.prepMin), k = minutes(r.cookMin);
   if (!p && !k) return '';
   const chip = (label, m) => `<span class="time-chip">${label} <b>${fmtMin(m)}</b></span>`;
-  return `<div class="times">${ui('timer')}${p ? chip('Arbeitszeit', p) : ''}${k ? chip('Kochzeit', k) : ''}${p && k ? chip('Gesamt', p + k) : ''}</div>`;
+  // im Rezept getrennt; die Summe steht nur auf den Karten in der Liste (timePill)
+  return `<div class="times">${ui('timer')}${p ? chip('Arbeitszeit', p) : ''}${k ? chip('Kochzeit', k) : ''}</div>`;
 }
 
 // Gewürze stehen im Rezept getrennt (hat man meistens da). sp = true/false; fehlt es (alte Rezepte), nach Kategorie raten.
@@ -556,7 +557,6 @@ function drawRecipe() {
   el.innerHTML = `
     <h1 class="recipe-title">${esc(r.title)}</h1>
     ${timesHtml(r)}
-    <a class="btn primary block cook-start" href="#/rezept/${r.id}/kochen">${ui('pot')} ${cooking ? 'Weiterkochen' : 'Kochmodus starten'}</a>
     ${nutriCardHtml(c)}
     <section class="block">
       <div class="section-head"><h2>Zutaten</h2>${mainSel.length ? `<button type="button" class="link" data-act="sel-all">${allSel ? 'Auswahl aufheben' : 'Alle auswählen'}</button>` : ''}</div>
@@ -564,6 +564,7 @@ function drawRecipe() {
       ${main.length ? `<ul class="ing-list">${main.map(li).join('')}</ul>` : ''}
       ${spices.length ? `<h3 class="sub-head">Gewürze</h3><ul class="ing-list">${spices.map(li).join('')}</ul>` : ''}
     </section>
+    <a class="btn primary block cook-start" href="#/rezept/${r.id}/kochen">${ui('pot')} ${cooking ? 'Weiterkochen' : 'Kochmodus starten'}</a>
     ${steps.length ? `<section class="block"><h2>Zubereitung</h2><ol class="steps">${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></section>` : ''}
     ${r.notes?.trim() ? `<section class="block"><h2>Notizen</h2><p class="notes">${esc(r.notes)}</p></section>` : ''}
     <div class="block center"><button type="button" class="btn ghost danger" data-act="delete-recipe">${ui('trash')} Rezept löschen</button></div>`;
